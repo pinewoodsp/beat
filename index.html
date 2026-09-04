@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>AR 에어 캔버스 (Air Canvas)</title>
-  
-  <!-- MediaPipe 라이브러리 CDN 로드 -->
+  <title>3D AI Air Beat Saber</title>
+
+  <!-- MediaPipe Hands & Camera Utils CDN -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
 
@@ -14,22 +14,21 @@
       box-sizing: border-box;
       margin: 0;
       padding: 0;
+      font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       user-select: none;
-      -webkit-user-select: none;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     }
     body, html {
       width: 100%;
       height: 100%;
       overflow: hidden;
-      background-color: #000;
+      background-color: #05050c;
+      color: #fff;
     }
-    #app-container {
+    #game-container {
       position: relative;
       width: 100vw;
       height: 100vh;
     }
-    /* 웹캠 및 드로잉 캔버스 */
     video {
       display: none;
     }
@@ -39,187 +38,269 @@
       left: 0;
       width: 100%;
       height: 100%;
-      transform: scaleX(-1); /* 거울 모드 (자연스러운 인터랙션) */
+      transform: scaleX(-1); /* 거울 모드 */
     }
-    /* 상단 상태창 HUD */
+
+    /* 상단 HUD (점수, 콤보, 판정) */
     #hud {
       position: absolute;
-      top: 20px;
-      left: 20px;
-      right: 20px;
+      top: 30px;
+      left: 0;
+      width: 100%;
       display: flex;
-      justify-content: space-between;
+      justify-content: space-around;
       align-items: center;
+      z-index: 10;
+      pointer-events: none;
+    }
+    .hud-box {
+      background: rgba(15, 23, 42, 0.75);
+      border: 2px solid rgba(255, 255, 255, 0.2);
+      padding: 12px 28px;
+      border-radius: 20px;
+      text-align: center;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+    }
+    .hud-title {
+      font-size: 0.9rem;
+      color: #94a3b8;
+      letter-spacing: 1.5px;
+      font-weight: 700;
+    }
+    .hud-value {
+      font-size: 2.4rem;
+      font-weight: 900;
+      color: #38bdf8;
+      text-shadow: 0 0 15px rgba(56, 189, 248, 0.8);
+    }
+    #combo-value {
+      color: #f43f5e;
+      text-shadow: 0 0 15px rgba(244, 63, 94, 0.8);
+    }
+    #judgment {
+      position: absolute;
+      top: 35%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 3.5rem;
+      font-weight: 900;
+      font-style: italic;
+      letter-spacing: 2px;
       pointer-events: none;
       z-index: 10;
+      opacity: 0;
+      transition: opacity 0.15s, transform 0.15s;
     }
-    .status-badge {
-      background: rgba(15, 23, 42, 0.8);
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      padding: 10px 18px;
-      border-radius: 9999px;
-      color: #fff;
-      font-size: 1rem;
-      font-weight: 600;
-      backdrop-filter: blur(8px);
+    #judgment.perfect {
+      color: #38bdf8;
+      text-shadow: 0 0 30px #38bdf8;
+      opacity: 1;
+      transform: translate(-50%, -50%) scale(1.2);
     }
-    #pinch-indicator {
-      display: inline-block;
-      width: 12px;
-      height: 12px;
-      border-radius: 50%;
-      margin-right: 8px;
-      background-color: #94a3b8;
-    }
-    #pinch-indicator.active {
-      background-color: #22c55e;
-      box-shadow: 0 0 10px #22c55e;
+    #judgment.miss {
+      color: #64748b;
+      text-shadow: 0 0 20px #475569;
+      opacity: 1;
+      transform: translate(-50%, -50%) scale(0.9);
     }
 
-    /* 하단 AR 툴바 */
-    #toolbar {
-      position: absolute;
-      bottom: 24px;
-      left: 50%;
-      transform: translateX(-50%);
-      display: flex;
-      gap: 12px;
-      background: rgba(15, 23, 42, 0.85);
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      padding: 10px 18px;
-      border-radius: 30px;
-      backdrop-filter: blur(10px);
-      z-index: 10;
-    }
-    .color-btn {
-      width: 38px;
-      height: 38px;
-      border-radius: 50%;
-      border: 3px solid transparent;
-      cursor: pointer;
-      transition: transform 0.2s, border-color 0.2s;
-    }
-    .color-btn.selected {
-      transform: scale(1.15);
-      border-color: #fff;
-    }
-    .action-btn {
-      background: rgba(255, 255, 255, 0.15);
-      color: #fff;
-      border: none;
-      padding: 0 16px;
-      border-radius: 20px;
-      font-size: 0.9rem;
-      font-weight: 600;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      transition: background 0.2s;
-    }
-    .action-btn:hover {
-      background: rgba(255, 255, 255, 0.3);
-    }
-
-    /* 초기 시작 모달 */
-    #overlay-screen {
+    /* 시작 오버레이 */
+    #start-modal {
       position: absolute;
       top: 0;
       left: 0;
       width: 100%;
       height: 100%;
-      background: rgba(10, 15, 30, 0.92);
+      background: rgba(5, 5, 12, 0.95);
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
       z-index: 100;
-      color: white;
       text-align: center;
       padding: 24px;
     }
-    #overlay-screen h1 {
-      font-size: 2.2rem;
+    #start-modal h1 {
+      font-size: 3.2rem;
+      font-weight: 900;
       margin-bottom: 12px;
-      color: #38bdf8;
+      background: linear-gradient(135deg, #f43f5e, #38bdf8);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
     }
-    #overlay-screen p {
-      font-size: 1.1rem;
+    #start-modal p {
+      font-size: 1.2rem;
       color: #cbd5e1;
-      max-width: 480px;
-      line-height: 1.6;
-      margin-bottom: 28px;
+      max-width: 600px;
+      line-height: 1.8;
+      margin-bottom: 30px;
     }
     #start-btn {
-      background: linear-gradient(135deg, #0ea5e9, #6366f1);
+      background: linear-gradient(135deg, #f43f5e, #38bdf8);
       border: none;
       color: #fff;
-      font-size: 1.2rem;
-      font-weight: 700;
-      padding: 16px 36px;
+      font-size: 1.3rem;
+      font-weight: 800;
+      padding: 18px 45px;
       border-radius: 9999px;
       cursor: pointer;
-      box-shadow: 0 0 25px rgba(14, 165, 233, 0.5);
+      box-shadow: 0 0 30px rgba(56, 189, 248, 0.6);
+      transition: transform 0.2s;
+    }
+    #start-btn:hover {
+      transform: scale(1.06);
     }
   </style>
 </head>
 <body>
 
-  <div id="app-container">
+  <div id="game-container">
     <video id="webcam" playsinline></video>
-    <canvas id="output_canvas"></canvas>
+    <canvas id="game-canvas"></canvas>
 
     <div id="hud">
-      <div class="status-badge">
-        <span id="pinch-indicator"></span>
-        <span id="status-text">카메라 대기 중</span>
+      <div class="hud-box">
+        <div class="hud-title">SCORE</div>
+        <div class="hud-value" id="score-value">0</div>
       </div>
-      <div class="status-badge" style="font-size: 0.85rem; color: #94a3b8;">
-        🖐️ 엄지+검지 꼬집기(Pinch) = 그리기
+      <div class="hud-box">
+        <div class="hud-title">COMBO</div>
+        <div class="hud-value" id="combo-value">0</div>
       </div>
     </div>
 
-    <div id="toolbar">
-      <button class="color-btn selected" style="background-color: #00f0ff;" data-color="#00f0ff"></button>
-      <button class="color-btn" style="background-color: #ff0055;" data-color="#ff0055"></button>
-      <button class="color-btn" style="background-color: #ffe600;" data-color="#ffe600"></button>
-      <button class="color-btn" style="background-color: #00ff66;" data-color="#00ff66"></button>
-      <button class="color-btn" style="background-color: #ffffff;" data-color="#ffffff"></button>
-      <button class="action-btn" id="clear-btn">전체 지우기</button>
-    </div>
+    <div id="judgment">PERFECT!</div>
 
-    <div id="overlay-screen">
-      <h1>✨ AR Air Canvas</h1>
+    <div id="start-modal">
+      <h1>⚡ 3D AIR BEAT SABER</h1>
       <p>
-        허공에서 손가락으로 그림을 그리는 공간 드로잉 웹앱입니다.<br>
-        <strong>엄지와 검지를 모아서 꼬집으면</strong> 선이 그려지고,<br>
-        손가락을 떼면 위치만 이동합니다.
+        🔴 <strong>왼손: 빨간 광선검</strong> / 🔵 <strong>오른손: 파란 광선검</strong><br>
+        120BPM EDM 비트에 맞춰 중앙에서 날아오는 블록을 화살표 방향으로 베어 넘기세요!<br>
+        (가만히 대고 있으면 MISS! 손을 휙 휘둘러야 베어집니다)
       </p>
-      <button id="start-btn">카메라 켜고 시작하기</button>
+      <button id="start-btn">비트 시작하기 (카메라/사운드 On)</button>
     </div>
   </div>
 
   <script>
-    // --- 캔버스 설정 ---
-    const canvas = document.getElementById('output_canvas');
+    // ==========================================
+    // 1. Web Audio API 고정밀 비트 신디사이저
+    // ==========================================
+    const BPM = 120;
+    const SECONDS_PER_BEAT = 60 / BPM; // 0.5초당 1비트 (4분음표)
+    let audioCtx = null;
+    let nextNoteTime = 0;
+    let beatStep = 0;
+    let isAudioPlaying = false;
+
+    function initAudio() {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      nextNoteTime = audioCtx.currentTime + 0.1;
+      isAudioPlaying = true;
+      scheduleMusic();
+    }
+
+    // 일렉트로닉 드럼 및 신스 베이스 합성 스케줄러
+    function scheduleMusic() {
+      if (!isAudioPlaying) return;
+
+      while (nextNoteTime < audioCtx.currentTime + 0.2) {
+        playBeat(beatStep, nextNoteTime);
+        // 비트에 정확히 맞춰 3D 노트 스폰 트리거
+        spawnNoteOnBeat(beatStep, nextNoteTime);
+
+        nextNoteTime += SECONDS_PER_BEAT / 2; // 8분음표 단위 갱신
+        beatStep++;
+      }
+      setTimeout(scheduleMusic, 25);
+    }
+
+    // 드럼 사운드 합성 (Kick, Hi-hat, Snare)
+    function playBeat(step, time) {
+      const isQuarterBeat = step % 2 === 0;
+      const quarterIndex = (step / 2) % 4;
+
+      // 4-on-the-floor 킥 드럼 (정박 0, 1, 2, 3)
+      if (isQuarterBeat) {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.frequency.setValueAtTime(150, time);
+        osc.frequency.exponentialRampToValueAtTime(30, time + 0.12);
+        gain.gain.setValueAtTime(0.8, time);
+        gain.gain.exponentialRampToValueAtTime(0.001, time + 0.15);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(time);
+        osc.stop(time + 0.16);
+      }
+
+      // 스네어 (2, 4번째 박)
+      if (isQuarterBeat && (quarterIndex === 1 || quarterIndex === 3)) {
+        playSnare(time);
+      }
+
+      // 오프비트 하이햇 (엇박)
+      if (!isQuarterBeat) {
+        playHiHat(time);
+      }
+    }
+
+    function playHiHat(time) {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(8000, time);
+      gain.gain.setValueAtTime(0.15, time);
+      gain.gain.exponentialRampToValueAtTime(0.001, time + 0.04);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(time);
+      osc.stop(time + 0.05);
+    }
+
+    function playSnare(time) {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(220, time);
+      gain.gain.setValueAtTime(0.4, time);
+      gain.gain.exponentialRampToValueAtTime(0.001, time + 0.18);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(time);
+      osc.stop(time + 0.2);
+    }
+
+    // 타격 성공 효과음 (크리스탈 슬라이스 사운드)
+    function playSliceSound(isPerfect) {
+      if (!audioCtx) return;
+      const now = audioCtx.currentTime;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(isPerfect ? 880 : 587, now);
+      osc.frequency.exponentialRampToValueAtTime(1760, now + 0.1);
+      gain.gain.setValueAtTime(0.5, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(now);
+      osc.stop(now + 0.16);
+    }
+
+
+    // ==========================================
+    // 2. 3D 공간 수학 및 비트 노트 엔진
+    // ==========================================
+    const canvas = document.getElementById('game-canvas');
     const ctx = canvas.getContext('2d');
-    const video = document.getElementById('webcam');
-    const statusText = document.getElementById('status-text');
-    const pinchIndicator = document.getElementById('pinch-indicator');
-    const startBtn = document.getElementById('start-btn');
-    const overlayScreen = document.getElementById('overlay-screen');
+    const scoreValEl = document.getElementById('score-value');
+    const comboValEl = document.getElementById('combo-value');
+    const judgmentEl = document.getElementById('judgment');
 
-    let currentColor = '#00f0ff';
-    let brushSize = 6;
-    let strokes = []; // 모든 그려진 선 목록: Array<{ color, size, points: Array<{x, y}> }>
-    let currentStroke = null;
-
-    // 파티클 이펙트 배열
-    let particles = [];
-
-    // 좌표 떨림 보정을 위한 EMA 필터 좌표
-    let smoothX = null;
-    let smoothY = null;
-    const SMOOTHING_FACTOR = 0.55; // 0~1 (높을수록 즉각 반응, 낮을수록 부드러움)
+    let score = 0;
+    let combo = 0;
 
     function resizeCanvas() {
       canvas.width = window.innerWidth;
@@ -228,28 +309,122 @@
     window.addEventListener('resize', resizeCanvas);
     resizeCanvas();
 
-    // --- 파티클 클래스 (네온 스파크) ---
+    // 3D 투영 설정 (Perspective Projection)
+    const FOV = 400; // 카메라 초점 거리
+    const HIT_PLANE_Z = 120; // 타격 판정 평면 Z값
+    const SPAWN_Z = 1200; // 큐브 생성 원거리 Z값
+    const TRAVEL_DURATION = SECONDS_PER_BEAT * 4; // 큐브가 생성되어 도달할 때까지 4박자(2초) 소요
+
+    let notes = [];
+    let particles = [];
+
+    // 화살표 방향 벡터 매핑 (선형대수학 내적용 단위 벡터)
+    const DIRECTIONS = {
+      'UP':    { dx: 0,  dy: -1, symbol: '▲' },
+      'DOWN':  { dx: 0,  dy: 1,  symbol: '▼' },
+      'LEFT':  { dx: -1, dy: 0,  symbol: '◀' },
+      'RIGHT': { dx: 1,  dy: 0,  symbol: '▶' }
+    };
+    const DIR_KEYS = ['UP', 'DOWN', 'LEFT', 'RIGHT'];
+
+    class BeatNote {
+      constructor(targetTime, type) {
+        this.targetTime = targetTime; // 판정 평면에 도달해야 하는 정확한 절대 오디오 시간
+        this.type = type; // 0: RED (Left Saber), 1: BLUE (Right Saber)
+        this.color = type === 0 ? '#f43f5e' : '#38bdf8';
+        this.dirKey = DIR_KEYS[Math.floor(Math.random() * DIR_KEYS.length)];
+        this.direction = DIRECTIONS[this.dirKey];
+
+        // 3D 공간 상의 X, Y 위치 (왼쪽 레인 vs 오른쪽 레인)
+        this.worldX = type === 0 ? -160 : 160;
+        this.worldY = 40;
+        this.size = 110;
+        this.isHit = false;
+        this.isMissed = false;
+      }
+
+      update(currentTime) {
+        // 남은 시간에 따른 정확한 Z 좌표 보간 (칼박자 보장)
+        const timeRemaining = this.targetTime - currentTime;
+        const progress = 1 - (timeRemaining / TRAVEL_DURATION);
+        this.z = SPAWN_Z - progress * (SPAWN_Z - HIT_PLANE_Z);
+
+        // 3D 원근 투영 변환 공식: ScreenX = CenterX + (WorldX / Z) * FOV
+        this.scale = FOV / this.z;
+        this.screenX = (canvas.width / 2) + (this.worldX * this.scale);
+        this.screenY = (canvas.height / 2) + (this.worldY * this.scale);
+        this.screenSize = this.size * this.scale;
+
+        // 판정선을 지나치고 일정 시간 경과 시 MISS 판정
+        if (timeRemaining < -0.15 && !this.isHit && !this.isMissed) {
+          this.isMissed = true;
+          triggerJudgment('MISS');
+        }
+      }
+
+      draw(context) {
+        if (this.z < 50 || this.isHit) return;
+
+        context.save();
+        context.translate(this.screenX, this.screenY);
+
+        // 네온 큐브 외형 렌더링
+        context.fillStyle = 'rgba(15, 23, 42, 0.85)';
+        context.strokeStyle = this.color;
+        context.lineWidth = Math.max(3, 8 * this.scale);
+        context.shadowColor = this.color;
+        context.shadowBlur = 15 * this.scale;
+
+        const half = this.screenSize / 2;
+        context.beginPath();
+        context.roundRect(-half, -half, this.screenSize, this.screenSize, 12 * this.scale);
+        context.fill();
+        context.stroke();
+
+        // 화살표 렌더링
+        context.fillStyle = '#ffffff';
+        context.font = `900 ${this.screenSize * 0.5}px sans-serif`;
+        context.textAlign = 'center';
+        context.textBaseline = 'middle';
+        context.fillText(this.direction.symbol, 0, 0);
+
+        context.restore();
+      }
+    }
+
+    // 비트마다 번갈아가며 큐브 스폰
+    function spawnNoteOnBeat(step, time) {
+      if (step % 2 === 0) {
+        const type = (step / 2) % 2 === 0 ? 0 : 1; // 빨강/파랑 교대
+        const targetTime = time + TRAVEL_DURATION;
+        notes.push(new BeatNote(targetTime, type));
+      }
+    }
+
+    // 폭발 파티클
     class Particle {
       constructor(x, y, color) {
         this.x = x;
         this.y = y;
         this.color = color;
-        this.size = Math.random() * 4 + 2;
         const angle = Math.random() * Math.PI * 2;
-        const speed = Math.random() * 3 + 1;
+        const speed = Math.random() * 8 + 3;
         this.vx = Math.cos(angle) * speed;
         this.vy = Math.sin(angle) * speed;
         this.alpha = 1;
+        this.size = Math.random() * 6 + 3;
       }
       update() {
         this.x += this.vx;
         this.y += this.vy;
-        this.alpha -= 0.04;
+        this.alpha -= 0.03;
       }
       draw(context) {
         context.save();
         context.globalAlpha = Math.max(0, this.alpha);
         context.fillStyle = this.color;
+        context.shadowColor = this.color;
+        context.shadowBlur = 10;
         context.beginPath();
         context.arc(this.x, this.y, this.size, 0, Math.PI * 2);
         context.fill();
@@ -257,144 +432,140 @@
       }
     }
 
-    // --- MediaPipe Hands 설정 ---
+    function createExplosion(x, y, color) {
+      for (let i = 0; i < 25; i++) {
+        particles.push(new Particle(x, y, color));
+      }
+    }
+
+    function triggerJudgment(type) {
+      judgmentEl.textContent = type;
+      judgmentEl.className = type.toLowerCase();
+      if (type === 'PERFECT') {
+        combo++;
+        score += 100 + (combo * 10);
+      } else {
+        combo = 0;
+      }
+      scoreValEl.textContent = score;
+      comboValEl.textContent = combo;
+
+      setTimeout(() => {
+        judgmentEl.style.opacity = '0';
+      }, 350);
+    }
+
+
+    // ==========================================
+    // 3. MediaPipe 듀얼 광선검 & 슬라이스 벡터 분석
+    // ==========================================
+    // 손끝 위치 및 시계열 속도 벡터 추적 버퍼
+    const sabers = {
+      0: { color: '#f43f5e', x: 0, y: 0, prevX: 0, prevY: 0, vx: 0, vy: 0, trail: [] }, // 왼손 (Red)
+      1: { color: '#38bdf8', x: 0, y: 0, prevX: 0, prevY: 0, vx: 0, vy: 0, trail: [] }  // 오른손 (Blue)
+    };
+
     const hands = new Hands({
       locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
     });
-
     hands.setOptions({
-      maxNumHands: 1,
+      maxNumHands: 2,
       modelComplexity: 1,
-      minDetectionConfidence: 0.65,
-      minTrackingConfidence: 0.65
+      minDetectionConfidence: 0.6,
+      minTrackingConfidence: 0.6
     });
+    hands.onResults(onHandResults);
 
-    hands.onResults(onResults);
+    function onHandResults(results) {
+      if (results.multiHandLandmarks) {
+        for (let i = 0; i < results.multiHandLandmarks.length; i++) {
+          const landmarks = results.multiHandLandmarks[i];
+          const tip = landmarks[8]; // 검지 끝(Index Finger Tip)
+          const curX = tip.x * canvas.width;
+          const curY = tip.y * canvas.height;
 
-    function onResults(results) {
-      // 1. 카메라 영상 출력
-      ctx.save();
+          // 화면 X좌표 기준 왼편(빨강) / 오른편(파랑) 광선검 매핑 (대형 화면 안정성)
+          const saberId = curX < canvas.width / 2 ? 0 : 1;
+          const s = sabers[saberId];
+
+          // 순간 속도 벡터 계산: V = (현재 위치 - 직전 위치)
+          s.vx = curX - s.prevX;
+          s.vy = curY - s.prevY;
+          s.prevX = s.x;
+          s.prevY = s.y;
+          s.x = curX;
+          s.y = curY;
+
+          // 광선검 네온 궤적 추가
+          s.trail.push({ x: curX, y: curY });
+          if (s.trail.length > 8) s.trail.shift();
+
+          // 충돌 및 벡터 슬라이스 판정 실행
+          checkSlice(s, saberId);
+        }
+      }
+    }
+
+    // 벡터 내적(Dot Product)을 활용한 슬라이스 각도 및 속도 판정
+    function checkSlice(saber, saberType) {
+      const speed = Math.hypot(saber.vx, saber.vy);
+      // 가만히 대고 있는 것 방지 (최소 휘두름 속도 임계값)
+      if (speed < 12) return;
+
+      // 손끝 속도 단위 벡터
+      const handDirX = saber.vx / speed;
+      const handDirY = saber.vy / speed;
+
+      for (let note of notes) {
+        if (note.isHit || note.isMissed) continue;
+        if (note.type !== saberType) continue; // 다른 색 광선검은 무시
+
+        // 타격 판정 Z축 존 범위 (±60)
+        if (Math.abs(note.z - HIT_PLANE_Z) < 80) {
+          // 2D 스크린 바운딩 박스 충돌 검사
+          const half = note.screenSize / 2;
+          if (
+            saber.x >= note.screenX - half &&
+            saber.x <= note.screenX + half &&
+            saber.y >= note.screenY - half &&
+            saber.y <= note.screenY + half
+          ) {
+            // [수학] 벡터 내적: cos(theta) = V_hand · V_target
+            const dotProduct = (handDirX * note.direction.dx) + (handDirY * note.direction.dy);
+
+            // 사이각이 약 50도 이내(내적값 > 0.6)일 때 슬라이스 성공
+            if (dotProduct > 0.6) {
+              note.isHit = true;
+              createExplosion(note.screenX, note.screenY, note.color);
+              playSliceSound(true);
+              triggerJudgment('PERFECT');
+            }
+          }
+        }
+      }
+    }
+
+
+    // ==========================================
+    // 4. 메인 렌더링 루프 (3D 터널 및 광선검)
+    // ==========================================
+    function render() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
 
-      let isPinching = false;
-      let targetX = 0;
-      let targetY = 0;
+      // 1. 3D 네온 터널 가이드라인 그리기 (소실점 연출)
+      draw3DTunnel();
 
-      if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-        const landmarks = results.multiHandLandmarks[0];
-
-        // 엄지 끝(4)과 검지 끝(8) 좌표
-        const thumbTip = landmarks[4];
-        const indexTip = landmarks[8];
-
-        // 3D 유클리드 거리 계산을 통한 핀치 감지
-        const pinchDistance = Math.hypot(
-          thumbTip.x - indexTip.x,
-          thumbTip.y - indexTip.y,
-          thumbTip.z - indexTip.z
-        );
-
-        // 엄지와 검지의 중간점을 그리기 지점으로 설정
-        const midX = ((thumbTip.x + indexTip.x) / 2) * canvas.width;
-        const midY = ((thumbTip.y + indexTip.y) / 2) * canvas.height;
-
-        // 지수 이동평균 필터로 손 떨림 감소
-        if (smoothX === null) {
-          smoothX = midX;
-          smoothY = midY;
-        } else {
-          smoothX = smoothX + SMOOTHING_FACTOR * (midX - smoothX);
-          smoothY = smoothY + SMOOTHING_FACTOR * (midY - smoothY);
+      // 2. 노트 업데이트 및 렌더링
+      const currentTime = audioCtx ? audioCtx.currentTime : 0;
+      for (let i = notes.length - 1; i >= 0; i--) {
+        notes[i].update(currentTime);
+        notes[i].draw(ctx);
+        if (notes[i].z < 40 || notes[i].isHit) {
+          notes.splice(i, 1);
         }
-
-        targetX = smoothX;
-        targetY = smoothY;
-
-        // 핀치 임계값 (0.075 이하일 때 꼬집은 상태로 판단)
-        if (pinchDistance < 0.075) {
-          isPinching = true;
-        }
-
-        // 손가락 관절 시각화 (가벼운 포인터 링)
-        drawCursor(targetX, targetY, isPinching);
-      } else {
-        smoothX = null;
-        smoothY = null;
       }
 
-      // 2. 드로잉 상태 업데이트
-      if (isPinching) {
-        statusText.textContent = '그리는 중 ✨';
-        pinchIndicator.classList.add('active');
-
-        if (!currentStroke) {
-          currentStroke = { color: currentColor, size: brushSize, points: [] };
-          strokes.push(currentStroke);
-        }
-        currentStroke.points.push({ x: targetX, y: targetY });
-
-        // 네온 파티클 생성
-        for (let i = 0; i < 2; i++) {
-          particles.push(new Particle(targetX, targetY, currentColor));
-        }
-      } else {
-        if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-          statusText.textContent = '이동 중 (손끝을 모아보세요)';
-        } else {
-          statusText.textContent = '손을 비춰주세요';
-        }
-        pinchIndicator.classList.remove('active');
-        currentStroke = null;
-      }
-
-      // 3. 기록된 모든 드로잉 선 렌더링 (Glow 네온 효과)
-      renderStrokes();
-
-      // 4. 파티클 업데이트 및 렌더링
-      renderParticles();
-
-      ctx.restore();
-    }
-
-    function drawCursor(x, y, isPinching) {
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(x, y, isPinching ? 8 : 14, 0, Math.PI * 2);
-      ctx.fillStyle = isPinching ? currentColor : 'rgba(255, 255, 255, 0.4)';
-      ctx.shadowColor = currentColor;
-      ctx.shadowBlur = 15;
-      ctx.fill();
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = '#fff';
-      ctx.stroke();
-      ctx.restore();
-    }
-
-    function renderStrokes() {
-      ctx.save();
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
-
-      strokes.forEach(stroke => {
-        if (stroke.points.length < 2) return;
-
-        ctx.strokeStyle = stroke.color;
-        ctx.lineWidth = stroke.size;
-        ctx.shadowColor = stroke.color;
-        ctx.shadowBlur = 18; // 네온 광선 효과
-
-        ctx.beginPath();
-        ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
-        for (let i = 1; i < stroke.points.length; i++) {
-          ctx.lineTo(stroke.points[i].x, stroke.points[i].y);
-        }
-        ctx.stroke();
-      });
-      ctx.restore();
-    }
-
-    function renderParticles() {
+      // 3. 파티클 업데이트 및 렌더링
       for (let i = particles.length - 1; i >= 0; i--) {
         particles[i].update();
         particles[i].draw(ctx);
@@ -402,34 +573,92 @@
           particles.splice(i, 1);
         }
       }
+
+      // 4. 양손 광선검 궤적(Ribbon) 렌더링
+      drawSaber(sabers[0]);
+      drawSaber(sabers[1]);
+
+      requestAnimationFrame(render);
     }
 
-    // --- UI 이벤트 리스너 ---
-    document.querySelectorAll('.color-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        document.querySelectorAll('.color-btn').forEach(b => b.classList.remove('selected'));
-        e.target.classList.add('selected');
-        currentColor = e.target.getAttribute('data-color');
-      });
-    });
+    function draw3DTunnel() {
+      const cx = canvas.width / 2;
+      const cy = canvas.height / 2;
 
-    document.getElementById('clear-btn').addEventListener('click', () => {
-      strokes = [];
-      particles = [];
-    });
+      ctx.save();
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.18)';
+      ctx.lineWidth = 2;
 
-    // --- 카메라 시작 ---
-    let cameraInstance = null;
+      // 원거리 소실점 사각형
+      ctx.strokeRect(cx - 60, cy - 40, 120, 80);
+
+      // 근거리 판정 영역 사각형
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+      ctx.strokeRect(cx - 300, cy - 200, 600, 400);
+
+      // 터널 4대 모서리 투영선
+      ctx.beginPath();
+      ctx.moveTo(cx - 60, cy - 40); ctx.lineTo(cx - 300, cy - 200);
+      ctx.moveTo(cx + 60, cy - 40); ctx.lineTo(cx + 300, cy - 200);
+      ctx.moveTo(cx - 60, cy + 40); ctx.lineTo(cx - 300, cy + 200);
+      ctx.moveTo(cx + 60, cy + 40); ctx.lineTo(cx + 300, cy + 200);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawSaber(saber) {
+      if (saber.trail.length < 2) return;
+
+      ctx.save();
+      ctx.strokeStyle = saber.color;
+      ctx.shadowColor = saber.color;
+      ctx.shadowBlur = 25;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+
+      // 궤적 두께 그라데이션
+      for (let i = 1; i < saber.trail.length; i++) {
+        ctx.lineWidth = i * 2.5;
+        ctx.beginPath();
+        ctx.moveTo(saber.trail[i - 1].x, saber.trail[i - 1].y);
+        ctx.lineTo(saber.trail[i].x, saber.trail[i].y);
+        ctx.stroke();
+      }
+
+      // 광선검 끝부분 발광 코어
+      ctx.beginPath();
+      ctx.arc(saber.x, saber.y, 14, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffffff';
+      ctx.shadowBlur = 30;
+      ctx.fill();
+      ctx.restore();
+    }
+
+
+    // ==========================================
+    // 5. 시작 버튼 및 카메라 초기화
+    // ==========================================
+    const startBtn = document.getElementById('start-btn');
+    const startModal = document.getElementById('start-modal');
+    const video = document.getElementById('webcam');
+
     startBtn.addEventListener('click', async () => {
-      overlayScreen.style.display = 'none';
-      cameraInstance = new Camera(video, {
+      startBtn.disabled = true;
+      startBtn.textContent = '카메라 연결 중...';
+
+      initAudio();
+
+      const camera = new Camera(video, {
         onFrame: async () => {
           await hands.send({ image: video });
         },
-        width: 1280,
-        height: 720
+        width: 640,
+        height: 480
       });
-      await cameraInstance.start();
+
+      await camera.start();
+      startModal.style.display = 'none';
+      requestAnimationFrame(render);
     });
   </script>
 </body>
