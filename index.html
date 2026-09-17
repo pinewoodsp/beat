@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>3D AI Air Beat Saber</title>
+  <title>3D AI Air Beat Saber (Ultra Fast)</title>
 
   <!-- MediaPipe Hands & Camera Utils CDN -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
@@ -41,10 +41,9 @@
       transform: scaleX(-1); /* 거울 모드 */
     }
 
-    /* 상단 HUD (점수, 콤보, 판정) */
     #hud {
       position: absolute;
-      top: 30px;
+      top: 24px;
       left: 0;
       width: 100%;
       display: flex;
@@ -54,22 +53,21 @@
       pointer-events: none;
     }
     .hud-box {
-      background: rgba(15, 23, 42, 0.75);
+      background: rgba(15, 23, 42, 0.8);
       border: 2px solid rgba(255, 255, 255, 0.2);
-      padding: 12px 28px;
-      border-radius: 20px;
+      padding: 10px 24px;
+      border-radius: 16px;
       text-align: center;
-      backdrop-filter: blur(10px);
-      box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(8px);
     }
     .hud-title {
-      font-size: 0.9rem;
+      font-size: 0.85rem;
       color: #94a3b8;
       letter-spacing: 1.5px;
       font-weight: 700;
     }
     .hud-value {
-      font-size: 2.4rem;
+      font-size: 2.2rem;
       font-weight: 900;
       color: #38bdf8;
       text-shadow: 0 0 15px rgba(56, 189, 248, 0.8);
@@ -90,13 +88,13 @@
       pointer-events: none;
       z-index: 10;
       opacity: 0;
-      transition: opacity 0.15s, transform 0.15s;
+      transition: opacity 0.1s, transform 0.1s;
     }
     #judgment.perfect {
       color: #38bdf8;
       text-shadow: 0 0 30px #38bdf8;
       opacity: 1;
-      transform: translate(-50%, -50%) scale(1.2);
+      transform: translate(-50%, -50%) scale(1.15);
     }
     #judgment.miss {
       color: #64748b;
@@ -105,7 +103,6 @@
       transform: translate(-50%, -50%) scale(0.9);
     }
 
-    /* 시작 오버레이 */
     #start-modal {
       position: absolute;
       top: 0;
@@ -122,7 +119,7 @@
       padding: 24px;
     }
     #start-modal h1 {
-      font-size: 3.2rem;
+      font-size: 3rem;
       font-weight: 900;
       margin-bottom: 12px;
       background: linear-gradient(135deg, #f43f5e, #38bdf8);
@@ -130,9 +127,9 @@
       -webkit-text-fill-color: transparent;
     }
     #start-modal p {
-      font-size: 1.2rem;
+      font-size: 1.15rem;
       color: #cbd5e1;
-      max-width: 600px;
+      max-width: 580px;
       line-height: 1.8;
       margin-bottom: 30px;
     }
@@ -140,16 +137,16 @@
       background: linear-gradient(135deg, #f43f5e, #38bdf8);
       border: none;
       color: #fff;
-      font-size: 1.3rem;
+      font-size: 1.25rem;
       font-weight: 800;
-      padding: 18px 45px;
+      padding: 16px 42px;
       border-radius: 9999px;
       cursor: pointer;
       box-shadow: 0 0 30px rgba(56, 189, 248, 0.6);
       transition: transform 0.2s;
     }
     #start-btn:hover {
-      transform: scale(1.06);
+      transform: scale(1.05);
     }
   </style>
 </head>
@@ -175,9 +172,9 @@
     <div id="start-modal">
       <h1>⚡ 3D AIR BEAT SABER</h1>
       <p>
-        🔴 <strong>왼손: 빨간 광선검</strong> / 🔵 <strong>오른손: 파란 광선검</strong><br>
-        120BPM EDM 비트에 맞춰 중앙에서 날아오는 블록을 화살표 방향으로 베어 넘기세요!<br>
-        (가만히 대고 있으면 MISS! 손을 휙 휘둘러야 베어집니다)
+        🔴 <strong>왼손: 빨간 검</strong> &nbsp;|&nbsp; 🔵 <strong>오른손: 파란 검</strong><br>
+        120BPM EDM 리듬에 맞춰 날아오는 블록을 화살표 방향으로 베어 넘기세요!<br>
+        (초고속 반응 모드가 적용되어 손을 휘두르면 즉각 베어집니다)
       </p>
       <button id="start-btn">비트 시작하기 (카메라/사운드 On)</button>
     </div>
@@ -185,10 +182,10 @@
 
   <script>
     // ==========================================
-    // 1. Web Audio API 고정밀 비트 신디사이저
+    // 1. Web Audio API 고정밀 신디사이저 엔진
     // ==========================================
     const BPM = 120;
-    const SECONDS_PER_BEAT = 60 / BPM; // 0.5초당 1비트 (4분음표)
+    const SECONDS_PER_BEAT = 60 / BPM; // 0.5초 = 1비트
     let audioCtx = null;
     let nextNoteTime = 0;
     let beatStep = 0;
@@ -201,33 +198,42 @@
       scheduleMusic();
     }
 
-    // 일렉트로닉 드럼 및 신스 베이스 합성 스케줄러
     function scheduleMusic() {
       if (!isAudioPlaying) return;
-
       while (nextNoteTime < audioCtx.currentTime + 0.2) {
         playBeat(beatStep, nextNoteTime);
-        // 비트에 정확히 맞춰 3D 노트 스폰 트리거
         spawnNoteOnBeat(beatStep, nextNoteTime);
-
-        nextNoteTime += SECONDS_PER_BEAT / 2; // 8분음표 단위 갱신
+        nextNoteTime += SECONDS_PER_BEAT / 2; // 8분음표 주기
         beatStep++;
       }
       setTimeout(scheduleMusic, 25);
     }
 
-    // 드럼 사운드 합성 (Kick, Hi-hat, Snare)
     function playBeat(step, time) {
       const isQuarterBeat = step % 2 === 0;
       const quarterIndex = (step / 2) % 4;
 
-      // 4-on-the-floor 킥 드럼 (정박 0, 1, 2, 3)
+      // 4-on-the-floor 킥 드럼
       if (isQuarterBeat) {
         const osc = audioCtx.createOscillator();
         const gain = audioCtx.createGain();
-        osc.frequency.setValueAtTime(150, time);
-        osc.frequency.exponentialRampToValueAtTime(30, time + 0.12);
-        gain.gain.setValueAtTime(0.8, time);
+        osc.frequency.setValueAtTime(140, time);
+        osc.frequency.exponentialRampToValueAtTime(32, time + 0.11);
+        gain.gain.setValueAtTime(0.7, time);
+        gain.gain.exponentialRampToValueAtTime(0.001, time + 0.13);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(time);
+        osc.stop(time + 0.14);
+      }
+
+      // 스네어
+      if (isQuarterBeat && (quarterIndex === 1 || quarterIndex === 3)) {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(200, time);
+        gain.gain.setValueAtTime(0.35, time);
         gain.gain.exponentialRampToValueAtTime(0.001, time + 0.15);
         osc.connect(gain);
         gain.connect(audioCtx.destination);
@@ -235,63 +241,40 @@
         osc.stop(time + 0.16);
       }
 
-      // 스네어 (2, 4번째 박)
-      if (isQuarterBeat && (quarterIndex === 1 || quarterIndex === 3)) {
-        playSnare(time);
-      }
-
-      // 오프비트 하이햇 (엇박)
+      // 하이햇
       if (!isQuarterBeat) {
-        playHiHat(time);
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(7500, time);
+        gain.gain.setValueAtTime(0.12, time);
+        gain.gain.exponentialRampToValueAtTime(0.001, time + 0.035);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(time);
+        osc.stop(time + 0.04);
       }
     }
 
-    function playHiHat(time) {
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.type = 'square';
-      osc.frequency.setValueAtTime(8000, time);
-      gain.gain.setValueAtTime(0.15, time);
-      gain.gain.exponentialRampToValueAtTime(0.001, time + 0.04);
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-      osc.start(time);
-      osc.stop(time + 0.05);
-    }
-
-    function playSnare(time) {
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.type = 'triangle';
-      osc.frequency.setValueAtTime(220, time);
-      gain.gain.setValueAtTime(0.4, time);
-      gain.gain.exponentialRampToValueAtTime(0.001, time + 0.18);
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-      osc.start(time);
-      osc.stop(time + 0.2);
-    }
-
-    // 타격 성공 효과음 (크리스탈 슬라이스 사운드)
-    function playSliceSound(isPerfect) {
+    function playSliceSound() {
       if (!audioCtx) return;
       const now = audioCtx.currentTime;
       const osc = audioCtx.createOscillator();
       const gain = audioCtx.createGain();
       osc.type = 'sine';
-      osc.frequency.setValueAtTime(isPerfect ? 880 : 587, now);
-      osc.frequency.exponentialRampToValueAtTime(1760, now + 0.1);
-      gain.gain.setValueAtTime(0.5, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+      osc.frequency.setValueAtTime(660, now);
+      osc.frequency.exponentialRampToValueAtTime(1400, now + 0.08);
+      gain.gain.setValueAtTime(0.4, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
       osc.connect(gain);
       gain.connect(audioCtx.destination);
       osc.start(now);
-      osc.stop(now + 0.16);
+      osc.stop(now + 0.11);
     }
 
 
     // ==========================================
-    // 2. 3D 공간 수학 및 비트 노트 엔진
+    // 2. 3D 공간 수학 및 노트 엔진
     // ==========================================
     const canvas = document.getElementById('game-canvas');
     const ctx = canvas.getContext('2d');
@@ -309,16 +292,14 @@
     window.addEventListener('resize', resizeCanvas);
     resizeCanvas();
 
-    // 3D 투영 설정 (Perspective Projection)
-    const FOV = 400; // 카메라 초점 거리
-    const HIT_PLANE_Z = 120; // 타격 판정 평면 Z값
-    const SPAWN_Z = 1200; // 큐브 생성 원거리 Z값
-    const TRAVEL_DURATION = SECONDS_PER_BEAT * 4; // 큐브가 생성되어 도달할 때까지 4박자(2초) 소요
+    const FOV = 420;
+    const HIT_PLANE_Z = 130;
+    const SPAWN_Z = 1200;
+    const TRAVEL_DURATION = SECONDS_PER_BEAT * 4; // 2초에 걸쳐 도달
 
     let notes = [];
     let particles = [];
 
-    // 화살표 방향 벡터 매핑 (선형대수학 내적용 단위 벡터)
     const DIRECTIONS = {
       'UP':    { dx: 0,  dy: -1, symbol: '▲' },
       'DOWN':  { dx: 0,  dy: 1,  symbol: '▼' },
@@ -329,14 +310,12 @@
 
     class BeatNote {
       constructor(targetTime, type) {
-        this.targetTime = targetTime; // 판정 평면에 도달해야 하는 정확한 절대 오디오 시간
-        this.type = type; // 0: RED (Left Saber), 1: BLUE (Right Saber)
+        this.targetTime = targetTime;
+        this.type = type; // 0: RED (Left), 1: BLUE (Right)
         this.color = type === 0 ? '#f43f5e' : '#38bdf8';
         this.dirKey = DIR_KEYS[Math.floor(Math.random() * DIR_KEYS.length)];
         this.direction = DIRECTIONS[this.dirKey];
-
-        // 3D 공간 상의 X, Y 위치 (왼쪽 레인 vs 오른쪽 레인)
-        this.worldX = type === 0 ? -160 : 160;
+        this.worldX = type === 0 ? -180 : 180;
         this.worldY = 40;
         this.size = 110;
         this.isHit = false;
@@ -344,34 +323,30 @@
       }
 
       update(currentTime) {
-        // 남은 시간에 따른 정확한 Z 좌표 보간 (칼박자 보장)
         const timeRemaining = this.targetTime - currentTime;
         const progress = 1 - (timeRemaining / TRAVEL_DURATION);
         this.z = SPAWN_Z - progress * (SPAWN_Z - HIT_PLANE_Z);
 
-        // 3D 원근 투영 변환 공식: ScreenX = CenterX + (WorldX / Z) * FOV
         this.scale = FOV / this.z;
         this.screenX = (canvas.width / 2) + (this.worldX * this.scale);
         this.screenY = (canvas.height / 2) + (this.worldY * this.scale);
         this.screenSize = this.size * this.scale;
 
-        // 판정선을 지나치고 일정 시간 경과 시 MISS 판정
-        if (timeRemaining < -0.15 && !this.isHit && !this.isMissed) {
+        if (timeRemaining < -0.16 && !this.isHit && !this.isMissed) {
           this.isMissed = true;
           triggerJudgment('MISS');
         }
       }
 
       draw(context) {
-        if (this.z < 50 || this.isHit) return;
+        if (this.z < 60 || this.isHit) return;
 
         context.save();
         context.translate(this.screenX, this.screenY);
 
-        // 네온 큐브 외형 렌더링
         context.fillStyle = 'rgba(15, 23, 42, 0.85)';
         context.strokeStyle = this.color;
-        context.lineWidth = Math.max(3, 8 * this.scale);
+        context.lineWidth = Math.max(3, 7 * this.scale);
         context.shadowColor = this.color;
         context.shadowBlur = 15 * this.scale;
 
@@ -381,9 +356,8 @@
         context.fill();
         context.stroke();
 
-        // 화살표 렌더링
         context.fillStyle = '#ffffff';
-        context.font = `900 ${this.screenSize * 0.5}px sans-serif`;
+        context.font = `900 ${this.screenSize * 0.52}px sans-serif`;
         context.textAlign = 'center';
         context.textBaseline = 'middle';
         context.fillText(this.direction.symbol, 0, 0);
@@ -392,49 +366,38 @@
       }
     }
 
-    // 비트마다 번갈아가며 큐브 스폰
     function spawnNoteOnBeat(step, time) {
       if (step % 2 === 0) {
-        const type = (step / 2) % 2 === 0 ? 0 : 1; // 빨강/파랑 교대
-        const targetTime = time + TRAVEL_DURATION;
-        notes.push(new BeatNote(targetTime, type));
+        const type = (step / 2) % 2 === 0 ? 0 : 1;
+        notes.push(new BeatNote(time + TRAVEL_DURATION, type));
       }
     }
 
-    // 폭발 파티클
     class Particle {
       constructor(x, y, color) {
         this.x = x;
         this.y = y;
         this.color = color;
         const angle = Math.random() * Math.PI * 2;
-        const speed = Math.random() * 8 + 3;
+        const speed = Math.random() * 9 + 4;
         this.vx = Math.cos(angle) * speed;
         this.vy = Math.sin(angle) * speed;
         this.alpha = 1;
-        this.size = Math.random() * 6 + 3;
+        this.size = Math.random() * 5 + 3;
       }
       update() {
         this.x += this.vx;
         this.y += this.vy;
-        this.alpha -= 0.03;
+        this.alpha -= 0.04;
       }
       draw(context) {
         context.save();
         context.globalAlpha = Math.max(0, this.alpha);
         context.fillStyle = this.color;
-        context.shadowColor = this.color;
-        context.shadowBlur = 10;
         context.beginPath();
         context.arc(this.x, this.y, this.size, 0, Math.PI * 2);
         context.fill();
         context.restore();
-      }
-    }
-
-    function createExplosion(x, y, color) {
-      for (let i = 0; i < 25; i++) {
-        particles.push(new Particle(x, y, color));
       }
     }
 
@@ -452,14 +415,13 @@
 
       setTimeout(() => {
         judgmentEl.style.opacity = '0';
-      }, 350);
+      }, 300);
     }
 
 
-    // ==========================================
-    // 3. MediaPipe 듀얼 광선검 & 슬라이스 벡터 분석
-    // ==========================================
-    // 손끝 위치 및 시계열 속도 벡터 추적 버퍼
+    // ==========================================================
+    // 3. 초고속 반응 AI 및 손바닥 중심(Palm Center) 트래킹 최적화
+    // ==========================================================
     const sabers = {
       0: { color: '#f43f5e', x: 0, y: 0, prevX: 0, prevY: 0, vx: 0, vy: 0, trail: [] }, // 왼손 (Red)
       1: { color: '#38bdf8', x: 0, y: 0, prevX: 0, prevY: 0, vx: 0, vy: 0, trail: [] }  // 오른손 (Blue)
@@ -468,76 +430,80 @@
     const hands = new Hands({
       locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
     });
+
+    // ⚡ [핵심 최적화 1] modelComplexity: 0 (가장 가벼운 초고속 Lite 모델로 FPS 극대화)
     hands.setOptions({
       maxNumHands: 2,
-      modelComplexity: 1,
-      minDetectionConfidence: 0.6,
-      minTrackingConfidence: 0.6
+      modelComplexity: 0,
+      minDetectionConfidence: 0.5,
+      minTrackingConfidence: 0.5
     });
     hands.onResults(onHandResults);
 
     function onHandResults(results) {
-      if (results.multiHandLandmarks) {
-        for (let i = 0; i < results.multiHandLandmarks.length; i++) {
-          const landmarks = results.multiHandLandmarks[i];
-          const tip = landmarks[8]; // 검지 끝(Index Finger Tip)
-          const curX = tip.x * canvas.width;
-          const curY = tip.y * canvas.height;
+      if (!results.multiHandLandmarks) return;
 
-          // 화면 X좌표 기준 왼편(빨강) / 오른편(파랑) 광선검 매핑 (대형 화면 안정성)
-          const saberId = curX < canvas.width / 2 ? 0 : 1;
-          const s = sabers[saberId];
+      for (let i = 0; i < results.multiHandLandmarks.length; i++) {
+        const landmarks = results.multiHandLandmarks[i];
 
-          // 순간 속도 벡터 계산: V = (현재 위치 - 직전 위치)
-          s.vx = curX - s.prevX;
-          s.vy = curY - s.prevY;
-          s.prevX = s.x;
-          s.prevY = s.y;
-          s.x = curX;
-          s.y = curY;
+        // ⚡ [핵심 최적화 2] 모션 블러에 취약한 손끝(8) 대신 손바닥 중심(9번 MCP) 추적
+        const palmCenter = landmarks[9]; 
+        const curX = palmCenter.x * canvas.width;
+        const curY = palmCenter.y * canvas.height;
 
-          // 광선검 네온 궤적 추가
-          s.trail.push({ x: curX, y: curY });
-          if (s.trail.length > 8) s.trail.shift();
+        // 화면 중심 기준 좌측/우측 손 분기
+        const saberId = curX < canvas.width / 2 ? 0 : 1;
+        const s = sabers[saberId];
 
-          // 충돌 및 벡터 슬라이스 판정 실행
-          checkSlice(s, saberId);
-        }
+        // ⚡ [핵심 최적화 3] 반응 지연 없는 즉각 속도 벡터 계산
+        s.vx = curX - s.x;
+        s.vy = curY - s.y;
+        s.prevX = s.x;
+        s.prevY = s.y;
+        s.x = curX;
+        s.y = curY;
+
+        // 궤적 관리 (더 날렵하게 5개로 단축)
+        s.trail.push({ x: curX, y: curY });
+        if (s.trail.length > 5) s.trail.shift();
+
+        // 즉각 슬라이스 검사
+        checkSlice(s, saberId);
       }
     }
 
-    // 벡터 내적(Dot Product)을 활용한 슬라이스 각도 및 속도 판정
+    // 선형대수학 벡터 내적 기반 슬라이스 판정
     function checkSlice(saber, saberType) {
       const speed = Math.hypot(saber.vx, saber.vy);
-      // 가만히 대고 있는 것 방지 (최소 휘두름 속도 임계값)
-      if (speed < 12) return;
+      // 손을 휘두르는 최소 속도 (약간만 움직여도 반응하도록 8로 최적화)
+      if (speed < 8) return;
 
-      // 손끝 속도 단위 벡터
       const handDirX = saber.vx / speed;
       const handDirY = saber.vy / speed;
 
       for (let note of notes) {
         if (note.isHit || note.isMissed) continue;
-        if (note.type !== saberType) continue; // 다른 색 광선검은 무시
+        if (note.type !== saberType) continue;
 
-        // 타격 판정 Z축 존 범위 (±60)
-        if (Math.abs(note.z - HIT_PLANE_Z) < 80) {
-          // 2D 스크린 바운딩 박스 충돌 검사
-          const half = note.screenSize / 2;
+        // 타격 판정 Z축 여유 구간 (초보자 및 빠른 스피드 대응)
+        if (Math.abs(note.z - HIT_PLANE_Z) < 95) {
+          const half = note.screenSize * 0.75; // 히트박스를 살짝 넉넉하게 보정
           if (
             saber.x >= note.screenX - half &&
             saber.x <= note.screenX + half &&
             saber.y >= note.screenY - half &&
             saber.y <= note.screenY + half
           ) {
-            // [수학] 벡터 내적: cos(theta) = V_hand · V_target
+            // 벡터 내적: cos(theta)
             const dotProduct = (handDirX * note.direction.dx) + (handDirY * note.direction.dy);
 
-            // 사이각이 약 50도 이내(내적값 > 0.6)일 때 슬라이스 성공
-            if (dotProduct > 0.6) {
+            // 60도 이내 방향 일치 시 판정 성공
+            if (dotProduct > 0.45) {
               note.isHit = true;
-              createExplosion(note.screenX, note.screenY, note.color);
-              playSliceSound(true);
+              for (let i = 0; i < 20; i++) {
+                particles.push(new Particle(note.screenX, note.screenY, note.color));
+              }
+              playSliceSound();
               triggerJudgment('PERFECT');
             }
           }
@@ -547,15 +513,15 @@
 
 
     // ==========================================
-    // 4. 메인 렌더링 루프 (3D 터널 및 광선검)
+    // 4. 고속 메인 렌더링 루프
     // ==========================================
     function render() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // 1. 3D 네온 터널 가이드라인 그리기 (소실점 연출)
+      // 1. 3D 네온 터널
       draw3DTunnel();
 
-      // 2. 노트 업데이트 및 렌더링
+      // 2. 큐브 노트 렌더링
       const currentTime = audioCtx ? audioCtx.currentTime : 0;
       for (let i = notes.length - 1; i >= 0; i--) {
         notes[i].update(currentTime);
@@ -565,7 +531,7 @@
         }
       }
 
-      // 3. 파티클 업데이트 및 렌더링
+      // 3. 파티클
       for (let i = particles.length - 1; i >= 0; i--) {
         particles[i].update();
         particles[i].draw(ctx);
@@ -574,7 +540,7 @@
         }
       }
 
-      // 4. 양손 광선검 궤적(Ribbon) 렌더링
+      // 4. 광선검 렌더링
       drawSaber(sabers[0]);
       drawSaber(sabers[1]);
 
@@ -586,22 +552,18 @@
       const cy = canvas.height / 2;
 
       ctx.save();
-      ctx.strokeStyle = 'rgba(56, 189, 248, 0.18)';
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.2)';
       ctx.lineWidth = 2;
 
-      // 원거리 소실점 사각형
-      ctx.strokeRect(cx - 60, cy - 40, 120, 80);
+      ctx.strokeRect(cx - 70, cy - 45, 140, 90);
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+      ctx.strokeRect(cx - 320, cy - 210, 640, 420);
 
-      // 근거리 판정 영역 사각형
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
-      ctx.strokeRect(cx - 300, cy - 200, 600, 400);
-
-      // 터널 4대 모서리 투영선
       ctx.beginPath();
-      ctx.moveTo(cx - 60, cy - 40); ctx.lineTo(cx - 300, cy - 200);
-      ctx.moveTo(cx + 60, cy - 40); ctx.lineTo(cx + 300, cy - 200);
-      ctx.moveTo(cx - 60, cy + 40); ctx.lineTo(cx - 300, cy + 200);
-      ctx.moveTo(cx + 60, cy + 40); ctx.lineTo(cx + 300, cy + 200);
+      ctx.moveTo(cx - 70, cy - 45); ctx.lineTo(cx - 320, cy - 210);
+      ctx.moveTo(cx + 70, cy - 45); ctx.lineTo(cx + 320, cy - 210);
+      ctx.moveTo(cx - 70, cy + 45); ctx.lineTo(cx - 320, cy + 210);
+      ctx.moveTo(cx + 70, cy + 45); ctx.lineTo(cx + 320, cy + 210);
       ctx.stroke();
       ctx.restore();
     }
@@ -612,22 +574,19 @@
       ctx.save();
       ctx.strokeStyle = saber.color;
       ctx.shadowColor = saber.color;
-      ctx.shadowBlur = 25;
+      ctx.shadowBlur = 20;
       ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
 
-      // 궤적 두께 그라데이션
       for (let i = 1; i < saber.trail.length; i++) {
-        ctx.lineWidth = i * 2.5;
+        ctx.lineWidth = i * 3.5;
         ctx.beginPath();
         ctx.moveTo(saber.trail[i - 1].x, saber.trail[i - 1].y);
         ctx.lineTo(saber.trail[i].x, saber.trail[i].y);
         ctx.stroke();
       }
 
-      // 광선검 끝부분 발광 코어
       ctx.beginPath();
-      ctx.arc(saber.x, saber.y, 14, 0, Math.PI * 2);
+      ctx.arc(saber.x, saber.y, 16, 0, Math.PI * 2);
       ctx.fillStyle = '#ffffff';
       ctx.shadowBlur = 30;
       ctx.fill();
@@ -635,25 +594,26 @@
     }
 
 
-    // ==========================================
-    // 5. 시작 버튼 및 카메라 초기화
-    // ==========================================
+    // ==========================================================
+    // 5. 카메라 다운샘플링 초기화 (초경량 480x360 처리)
+    // ==========================================================
     const startBtn = document.getElementById('start-btn');
     const startModal = document.getElementById('start-modal');
     const video = document.getElementById('webcam');
 
     startBtn.addEventListener('click', async () => {
       startBtn.disabled = true;
-      startBtn.textContent = '카메라 연결 중...';
+      startBtn.textContent = '카메라 튜닝 중...';
 
       initAudio();
 
+      // ⚡ [핵심 최적화 4] 카메라 입력 해상도를 480x360으로 다운샘플링하여 추론 지연 제거
       const camera = new Camera(video, {
         onFrame: async () => {
           await hands.send({ image: video });
         },
-        width: 640,
-        height: 480
+        width: 480,
+        height: 360
       });
 
       await camera.start();
