@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>3D AI Air Beat Saber (Speed Control)</title>
+  <title>3D AI Air Beat Saber (Fixed Controls)</title>
 
   <!-- MediaPipe Hands & Camera Utils CDN -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
@@ -39,6 +39,51 @@
       width: 100%;
       height: 100%;
       transform: scaleX(-1); /* 거울 모드 */
+      z-index: 1;
+    }
+
+    /* 🎮 무조건 최상단에 뜨는 속도 제어 패널 (z-index: 9999) */
+    #speed-control-panel {
+      position: absolute;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #0f172a;
+      border: 2px solid #38bdf8;
+      padding: 10px 22px;
+      border-radius: 30px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      z-index: 9999; /* 다른 모든 것보다 위에 표시 */
+      box-shadow: 0 0 25px rgba(56, 189, 248, 0.4);
+    }
+    #speed-control-panel label {
+      font-size: 0.9rem;
+      font-weight: 800;
+      color: #38bdf8;
+      white-space: nowrap;
+    }
+    .speed-btn {
+      background: #1e293b;
+      border: 1px solid #475569;
+      color: #cbd5e1;
+      padding: 6px 14px;
+      border-radius: 12px;
+      font-size: 0.85rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .speed-btn:hover {
+      background: #334155;
+    }
+    .speed-btn.active {
+      background: #38bdf8;
+      color: #000;
+      border-color: #38bdf8;
+      box-shadow: 0 0 10px rgba(56, 189, 248, 0.6);
+      font-weight: 900;
     }
 
     /* 상단 HUD (점수, 콤보) */
@@ -48,7 +93,8 @@
       left: 0;
       width: 100%;
       display: flex;
-      justify-content: space-around;
+      justify-content: space-between;
+      padding: 0 30px;
       align-items: center;
       z-index: 10;
       pointer-events: none;
@@ -56,7 +102,7 @@
     .hud-box {
       background: rgba(15, 23, 42, 0.85);
       border: 2px solid rgba(255, 255, 255, 0.2);
-      padding: 8px 20px;
+      padding: 8px 24px;
       border-radius: 16px;
       text-align: center;
       backdrop-filter: blur(8px);
@@ -68,7 +114,7 @@
       font-weight: 700;
     }
     .hud-value {
-      font-size: 1.8rem;
+      font-size: 2rem;
       font-weight: 900;
       color: #38bdf8;
       text-shadow: 0 0 15px rgba(56, 189, 248, 0.8);
@@ -78,57 +124,12 @@
       text-shadow: 0 0 15px rgba(244, 63, 94, 0.8);
     }
 
-    /* 🎮 속도 및 테스트 조절 컨트롤러 (상단 중앙) */
-    #speed-control-panel {
-      position: absolute;
-      top: 20px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: rgba(15, 23, 42, 0.9);
-      border: 1px solid #38bdf8;
-      padding: 10px 20px;
-      border-radius: 24px;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      z-index: 20;
-      backdrop-filter: blur(10px);
-      box-shadow: 0 0 20px rgba(56, 189, 248, 0.3);
-    }
-    #speed-control-panel label {
-      font-size: 0.85rem;
-      font-weight: 700;
-      color: #38bdf8;
-      white-space: nowrap;
-    }
-    #speed-slider {
-      width: 130px;
-      cursor: pointer;
-    }
-    .preset-btn {
-      background: rgba(255, 255, 255, 0.1);
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      color: #fff;
-      padding: 4px 10px;
-      border-radius: 8px;
-      font-size: 0.8rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-    .preset-btn.active {
-      background: #38bdf8;
-      color: #000;
-      border-color: #38bdf8;
-      font-weight: 800;
-    }
-
     #judgment {
       position: absolute;
       top: 40%;
       left: 50%;
       transform: translate(-50%, -50%);
-      font-size: 3.2rem;
+      font-size: 3.5rem;
       font-weight: 900;
       font-style: italic;
       letter-spacing: 2px;
@@ -150,23 +151,24 @@
       transform: translate(-50%, -50%) scale(0.9);
     }
 
+    /* 초기 시작 모달 */
     #start-modal {
       position: absolute;
       top: 0;
       left: 0;
       width: 100%;
       height: 100%;
-      background: rgba(5, 5, 12, 0.95);
+      background: rgba(5, 5, 12, 0.96);
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      z-index: 100;
+      z-index: 1000;
       text-align: center;
       padding: 24px;
     }
     #start-modal h1 {
-      font-size: 2.8rem;
+      font-size: 3rem;
       font-weight: 900;
       margin-bottom: 12px;
       background: linear-gradient(135deg, #f43f5e, #38bdf8);
@@ -174,22 +176,36 @@
       -webkit-text-fill-color: transparent;
     }
     #start-modal p {
-      font-size: 1.1rem;
+      font-size: 1.15rem;
       color: #cbd5e1;
       max-width: 580px;
       line-height: 1.8;
-      margin-bottom: 25px;
+      margin-bottom: 24px;
+    }
+    .modal-speed-picker {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      padding: 14px 24px;
+      border-radius: 20px;
+      margin-bottom: 28px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
     }
     #start-btn {
       background: linear-gradient(135deg, #f43f5e, #38bdf8);
       border: none;
       color: #fff;
-      font-size: 1.2rem;
+      font-size: 1.3rem;
       font-weight: 800;
-      padding: 16px 40px;
+      padding: 16px 45px;
       border-radius: 9999px;
       cursor: pointer;
       box-shadow: 0 0 30px rgba(56, 189, 248, 0.6);
+      transition: transform 0.2s;
+    }
+    #start-btn:hover {
+      transform: scale(1.05);
     }
   </style>
 </head>
@@ -199,14 +215,12 @@
     <video id="webcam" playsinline></video>
     <canvas id="game-canvas"></canvas>
 
-    <!-- 🎛️ 속도 조절 컨트롤러 UI -->
+    <!-- 🎛️ 상단 고정 속도 조절기 (게임 중에도 언제든 클릭 가능) -->
     <div id="speed-control-panel">
-      <label>속도 설정:</label>
-      <input type="range" id="speed-slider" min="1.0" max="5.0" step="0.5" value="4.0" />
-      <span id="speed-text" style="font-size: 0.85rem; font-weight: 700; width: 45px;">4.0초</span>
-      <button class="preset-btn active" data-speed="4.0">느림(테스트)</button>
-      <button class="preset-btn" data-speed="2.5">보통</button>
-      <button class="preset-btn" data-speed="1.5">빠름</button>
+      <label>⚡ 상자 속도:</label>
+      <button class="speed-btn active" data-speed="5.0">🐢 5초 (초느림 테스트)</button>
+      <button class="speed-btn" data-speed="3.5">🚶 3.5초 (느림)</button>
+      <button class="speed-btn" data-speed="2.0">🏃 2초 (보통)</button>
     </div>
 
     <div id="hud">
@@ -222,20 +236,38 @@
 
     <div id="judgment">PERFECT!</div>
 
+    <!-- 시작 안내 화면 -->
     <div id="start-modal">
       <h1>⚡ 3D AIR BEAT SABER</h1>
       <p>
         🔴 <strong>왼손: 빨간 검</strong> &nbsp;|&nbsp; 🔵 <strong>오른손: 파란 검</strong><br>
-        상자가 날아오는 속도를 상단에서 자유롭게 변경할 수 있습니다.<br>
-        먼저 <strong>느림 모드</strong>로 손동작과 베는 타이밍을 맞춰보세요!
+        날아오는 상자를 화살표 방향으로 베어 넘기세요!<br>
+        기본 속도를 <strong>5초(초느림)</strong>로 맞춰두었으니 테스트해 보세요.
       </p>
-      <button id="start-btn">비트 시작하기 (카메라/사운드 On)</button>
+
+      <button id="start-btn">비트 시작하기 (카메라 On)</button>
     </div>
   </div>
 
   <script>
     // ==========================================
-    // 1. Web Audio API 신디사이저 엔진
+    // 1. 속도 변수 및 이벤트 핸들러
+    // ==========================================
+    // ⚡ 상자가 생성되어 도달할 때까지 걸리는 시간 (초)
+    let travelDuration = 5.0; // 기본값: 5초 (아주 느긋하게 날아옴)
+
+    const speedBtns = document.querySelectorAll('.speed-btn');
+    speedBtns.forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        speedBtns.forEach(b => b.classList.remove('active'));
+        e.target.classList.add('active');
+        travelDuration = parseFloat(e.target.getAttribute('data-speed'));
+      });
+    });
+
+
+    // ==========================================
+    // 2. Web Audio API 신디사이저 엔진
     // ==========================================
     const BPM = 120;
     const SECONDS_PER_BEAT = 60 / BPM; // 0.5초 = 1비트
@@ -243,9 +275,6 @@
     let nextNoteTime = 0;
     let beatStep = 0;
     let isAudioPlaying = false;
-
-    // ⚡ 큐브가 생성되어 판정선까지 도달하는 시간 (기본값: 4.0초 = 아주 느림)
-    let travelDuration = 4.0; 
 
     function initAudio() {
       audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -259,7 +288,7 @@
       while (nextNoteTime < audioCtx.currentTime + 0.2) {
         playBeat(beatStep, nextNoteTime);
         spawnNoteOnBeat(beatStep, nextNoteTime);
-        nextNoteTime += SECONDS_PER_BEAT / 2; // 8분음표
+        nextNoteTime += SECONDS_PER_BEAT / 2; // 8분음표 주기
         beatStep++;
       }
       setTimeout(scheduleMusic, 25);
@@ -327,7 +356,7 @@
 
 
     // ==========================================
-    // 2. 3D 공간 수학 및 노트 엔진
+    // 3. 3D 공간 수학 및 노트 엔진
     // ==========================================
     const canvas = document.getElementById('game-canvas');
     const ctx = canvas.getContext('2d');
@@ -363,8 +392,8 @@
     class BeatNote {
       constructor(targetTime, type, duration) {
         this.targetTime = targetTime;
-        this.duration = duration; // 생성 시점의 도달 시간 기준
-        this.type = type; // 0: RED (Left), 1: BLUE (Right)
+        this.duration = duration;
+        this.type = type; // 0: RED, 1: BLUE
         this.color = type === 0 ? '#f43f5e' : '#38bdf8';
         this.dirKey = DIR_KEYS[Math.floor(Math.random() * DIR_KEYS.length)];
         this.direction = DIRECTIONS[this.dirKey];
@@ -385,8 +414,8 @@
         this.screenY = (canvas.height / 2) + (this.worldY * this.scale);
         this.screenSize = this.size * this.scale;
 
-        // 판정선을 여유롭게 지나친 뒤 미스 처리
-        if (timeRemaining < -0.3 && !this.isHit && !this.isMissed) {
+        // 판정선을 여유롭게 지나치면 MISS
+        if (timeRemaining < -0.35 && !this.isHit && !this.isMissed) {
           this.isMissed = true;
           triggerJudgment('MISS');
         }
@@ -420,7 +449,7 @@
       }
     }
 
-    // 4비트마다 노트 스폰 (초보자가 보기 편하게 4박자 간격으로 여유 있게 출현)
+    // 4비트(2초)마다 1개씩 여유 있게 스폰
     function spawnNoteOnBeat(step, time) {
       if (step % 4 === 0) {
         const type = (step / 4) % 2 === 0 ? 0 : 1;
@@ -475,7 +504,7 @@
 
 
     // ==========================================
-    // 3. MediaPipe 초고속 반응 손바닥 트래킹
+    // 4. MediaPipe 초고속 반응 손바닥 트래킹
     // ==========================================
     const sabers = {
       0: { color: '#f43f5e', x: 0, y: 0, prevX: 0, prevY: 0, vx: 0, vy: 0, trail: [] },
@@ -488,7 +517,7 @@
 
     hands.setOptions({
       maxNumHands: 2,
-      modelComplexity: 0,
+      modelComplexity: 0, // 초경량 모델
       minDetectionConfidence: 0.5,
       minTrackingConfidence: 0.5
     });
@@ -499,7 +528,7 @@
 
       for (let i = 0; i < results.multiHandLandmarks.length; i++) {
         const landmarks = results.multiHandLandmarks[i];
-        const palmCenter = landmarks[9]; // 중지 관절 밑 손바닥 중심
+        const palmCenter = landmarks[9]; // 손바닥 중심 트래킹
         const curX = palmCenter.x * canvas.width;
         const curY = palmCenter.y * canvas.height;
 
@@ -522,8 +551,7 @@
 
     function checkSlice(saber, saberType) {
       const speed = Math.hypot(saber.vx, saber.vy);
-      // 최소 휘두름 속도 완화 (느린 속도에서도 손을 조금만 뻗으면 반응)
-      if (speed < 6) return;
+      if (speed < 5) return; // 살짝만 그어도 반응
 
       const handDirX = saber.vx / speed;
       const handDirY = saber.vy / speed;
@@ -532,9 +560,9 @@
         if (note.isHit || note.isMissed) continue;
         if (note.type !== saberType) continue;
 
-        // 타격 판정 Z축 여유 대폭 확대 (±120)
-        if (Math.abs(note.z - HIT_PLANE_Z) < 120) {
-          const half = note.screenSize * 0.85;
+        // 판정 Z축 여유 구간 대폭 확대
+        if (Math.abs(note.z - HIT_PLANE_Z) < 130) {
+          const half = note.screenSize * 0.9;
           if (
             saber.x >= note.screenX - half &&
             saber.x <= note.screenX + half &&
@@ -543,8 +571,8 @@
           ) {
             const dotProduct = (handDirX * note.direction.dx) + (handDirY * note.direction.dy);
 
-            // 각도 판정 완화 (약 70도 이내 방향 일치 시 통과)
-            if (dotProduct > 0.35) {
+            // 약 75도 이내 일치 시 통과
+            if (dotProduct > 0.25) {
               note.isHit = true;
               for (let i = 0; i < 20; i++) {
                 particles.push(new Particle(note.screenX, note.screenY, note.color));
@@ -559,7 +587,7 @@
 
 
     // ==========================================
-    // 4. 메인 렌더링 루프
+    // 5. 메인 렌더링 루프
     // ==========================================
     function render() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -637,31 +665,8 @@
 
 
     // ==========================================
-    // 5. 속도 조절 이벤트 및 카메라 초기화
+    // 6. 초기 실행 설정
     // ==========================================
-    const slider = document.getElementById('speed-slider');
-    const speedText = document.getElementById('speed-text');
-    const presetBtns = document.querySelectorAll('.preset-btn');
-
-    function updateSpeed(val) {
-      travelDuration = parseFloat(val);
-      slider.value = travelDuration;
-      speedText.textContent = `${travelDuration.toFixed(1)}초`;
-    }
-
-    slider.addEventListener('input', (e) => {
-      updateSpeed(e.target.value);
-      presetBtns.forEach(b => b.classList.remove('active'));
-    });
-
-    presetBtns.forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        presetBtns.forEach(b => b.classList.remove('active'));
-        e.target.classList.add('active');
-        updateSpeed(e.target.getAttribute('data-speed'));
-      });
-    });
-
     const startBtn = document.getElementById('start-btn');
     const startModal = document.getElementById('start-modal');
     const video = document.getElementById('webcam');
