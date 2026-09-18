@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="카메라로 몸을 움직여 즐기는 랜덤 리듬게임 모음 — 리듬게임파티!!">
+  <title>리듬게임파티!!</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand" aria-label="리듬게임파티!!">🎉 리듬게임파티!!</div>
+      <div class="top-actions">
+        <span id="cameraStatus" class="status-dot off">카메라 꺼짐</span>
+        <button id="soundBtn" class="icon-btn" type="button" title="소리 켜기/끄기">🔊</button>
+      </div>
+    </header>
+
+    <main>
+      <section id="screen-home" class="screen active">
+        <div class="hero-grid">
+          <div class="hero-copy">
+            <div class="eyebrow">CAMERA RHYTHM PARTY</div>
+            <h1>몸으로 즐기는<br><span>랜덤 리듬게임</span></h1>
+            <p>카메라 앞에서 손을 흔들고, 펀치하고, 타겟을 쫓고, 좌우로 피하세요.<br>스테이지가 올라갈수록 게임은 빠르고 정신없어집니다.</p>
+            <div class="hero-actions">
+              <button id="playBtn" class="primary-btn giant" type="button">▶ PLAY!</button>
+              <button id="howBtn" class="secondary-btn" type="button">게임 방법</button>
+            </div>
+            <div class="mini-stats">
+              <div><strong id="bestStageHome">1</strong><span>최고 스테이지</span></div>
+              <div><strong id="bestScoreHome">0</strong><span>최고 점수</span></div>
+              <div><strong>4</strong><span>미니게임</span></div>
+            </div>
+          </div>
+
+          <div class="hero-card">
+            <div class="hero-orbit orbit-a"></div>
+            <div class="hero-orbit orbit-b"></div>
+            <div class="hero-camera-card">
+              <div class="camera-card-label">READY?</div>
+              <div class="stick-figure">🕺</div>
+              <div class="floating-note n1">♪</div>
+              <div class="floating-note n2">★</div>
+              <div class="floating-note n3">♫</div>
+              <div class="camera-frame"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="screen-how" class="screen">
+        <div class="panel narrow">
+          <div class="section-kicker">HOW TO PLAY</div>
+          <h2>게임 방법</h2>
+          <div class="how-grid">
+            <div class="how-card"><span>📷</span><h3>1. 카메라 허용</h3><p>브라우저의 카메라 권한을 허용하세요. 얼굴/몸/손의 위치를 실시간으로 분석합니다.</p></div>
+            <div class="how-card"><span>🎲</span><h3>2. 랜덤 게임</h3><p>매 스테이지마다 미니게임이 랜덤으로 선택됩니다. 같은 게임만 연속으로 나오지 않게 조절됩니다.</p></div>
+            <div class="how-card"><span>💥</span><h3>3. 리듬에 맞추기</h3><p>박자에 맞춰 손을 움직이거나 몸을 좌우로 이동해 PERFECT를 노리세요.</p></div>
+            <div class="how-card"><span>🔥</span><h3>4. 끝까지 생존</h3><p>MISS가 쌓이면 HP가 줄어듭니다. 스테이지가 올라갈수록 속도와 노트 수가 증가합니다.</p></div>
+          </div>
+          <div class="camera-tip">💡 어두운 곳보다는 얼굴과 전신이 잘 보이는 밝은 장소에서 플레이하면 더 잘 인식됩니다.</div>
+          <button id="backHomeBtn" class="secondary-btn" type="button">← 메인으로</button>
+        </div>
+      </section>
+
+      <section id="screen-calibrate" class="screen">
+        <div class="panel calibrate-panel">
+          <div class="section-kicker">CAMERA CHECK</div>
+          <h2>카메라 준비</h2>
+          <p id="cameraMessage">카메라를 켜고 몸이 화면 안에 들어오도록 맞춰주세요.</p>
+          <div class="preview-wrap">
+            <video id="cameraVideo" autoplay playsinline muted></video>
+            <canvas id="cameraOverlay"></canvas>
+            <div class="preview-hud"><span>BODY TRACKING</span><span id="trackingText">감지 대기 중…</span></div>
+          </div>
+          <div class="calibrate-controls">
+            <button id="cameraBtn" class="primary-btn" type="button">📷 카메라 켜기</button>
+            <button id="startRunBtn" class="secondary-btn" type="button" disabled>게임 시작</button>
+            <button id="calibrateBackBtn" class="ghost-btn" type="button">취소</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="screen-stage-intro" class="screen">
+        <div class="stage-intro-card">
+          <div class="stage-particles"></div>
+          <div class="section-kicker">NEXT STAGE</div>
+          <div class="stage-number" id="introStage">01</div>
+          <h2 id="introTitle">STAGE 1</h2>
+          <p id="introSubtitle">몸을 풀어봅시다!</p>
+          <div id="stageGamePreview" class="game-chip-row"></div>
+          <button id="stageStartBtn" class="primary-btn giant" type="button">START!</button>
+        </div>
+      </section>
+
+      <section id="screen-game" class="screen game-screen">
+        <div class="game-topbar">
+          <div><span class="game-label">STAGE</span><strong id="stageLabel">1</strong></div>
+          <div class="game-name"><span id="gameEmoji">👋</span><span id="gameTitle">손 흔들기</span></div>
+          <div class="game-stats"><span id="scoreLabel">0</span><span id="comboLabel">0 COMBO</span></div>
+        </div>
+        <div class="hp-row" id="hpRow"></div>
+        <div class="game-layout">
+          <div class="game-board-card">
+            <canvas id="gameCanvas"></canvas>
+            <div class="game-center-message" id="gameMessage">READY</div>
+            <div class="feedback" id="feedback"></div>
+          </div>
+          <aside class="camera-mini-card">
+            <div class="camera-mini-header"><span>CAMERA</span><span id="cameraMiniStatus">● LIVE</span></div>
+            <div class="camera-mini-wrap">
+              <video id="gameVideo" autoplay playsinline muted></video>
+              <canvas id="gameOverlay"></canvas>
+            </div>
+            <div class="landmark-meter"><div><span>TRACKING</span><b id="trackingMeter">--</b></div><div><span>BPM</span><b id="bpmMeter">--</b></div></div>
+          </aside>
+        </div>
+      </section>
+
+      <section id="screen-game-result" class="screen">
+        <div class="result-panel">
+          <div class="result-burst">✨</div>
+          <div class="section-kicker">GAME RESULT</div>
+          <h2 id="gameResultTitle">PERFECT!</h2>
+          <div class="result-big-score" id="gameResultScore">0</div>
+          <div class="result-breakdown">
+            <div><b id="perfectCount">0</b><span>PERFECT</span></div>
+            <div><b id="greatCount">0</b><span>GREAT</span></div>
+            <div><b id="goodCount">0</b><span>GOOD</span></div>
+            <div><b id="missCount">0</b><span>MISS</span></div>
+          </div>
+          <div class="progress-ring-wrap"><div id="resultGrade" class="grade">A</div><span>GAME GRADE</span></div>
+          <button id="continueBtn" class="primary-btn giant" type="button">계속 ▶</button>
+        </div>
+      </section>
+
+      <section id="screen-stage-result" class="screen">
+        <div class="result-panel stage-result-panel">
+          <div class="section-kicker">STAGE CLEAR</div>
+          <div class="clear-badge">CLEAR!</div>
+          <h2 id="stageResultTitle">STAGE 1 COMPLETE</h2>
+          <div class="stage-result-score" id="stageResultScore">0</div>
+          <div class="stage-result-line"><span>MAX COMBO</span><b id="maxComboResult">0</b></div>
+          <div class="stage-result-line"><span>HP</span><b id="hpResult">♥♥♥♥♥</b></div>
+          <div class="stage-result-line"><span>다음 난이도</span><b id="nextDifficulty">★</b></div>
+          <button id="nextStageBtn" class="primary-btn giant" type="button">NEXT STAGE ▶</button>
+          <button id="quitRunBtn" class="ghost-btn" type="button">런 종료</button>
+        </div>
+      </section>
+
+      <section id="screen-game-over" class="screen">
+        <div class="result-panel game-over-panel">
+          <div class="game-over-icon">💀</div>
+          <div class="section-kicker">GAME OVER</div>
+          <h2>파티는 여기까지!</h2>
+          <p>도달한 스테이지와 점수를 기록했습니다.</p>
+          <div class="final-score-row"><span>FINAL SCORE</span><strong id="finalScore">0</strong></div>
+          <div class="final-score-row"><span>BEST STAGE</span><strong id="finalBestStage">1</strong></div>
+          <button id="restartBtn" class="primary-btn giant" type="button">다시 플레이</button>
+          <button id="gameOverHomeBtn" class="ghost-btn" type="button">메인으로</button>
+        </div>
+      </section>
+    </main>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  </div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
