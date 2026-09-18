@@ -1,1 +1,1 @@
-# Rythm Game Party!!
+# Rhythm Game Party!!
