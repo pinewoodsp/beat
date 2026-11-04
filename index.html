@@ -41,33 +41,56 @@ const tracks=[
  {title:'Solar Rush',lines:'Solar<br>Rush',genre:'ARCADE / DANCE',bpm:140,level:'NORMAL',color:'#ffc76b',secondary:'#ed625d',description:'뜨거운 궤도를 따라, 조금 더 빠르게.',bass:[73.42,65.41,87.31,55],melody:[587.33,880,783.99,698.46,659.25,783.99,880,1174.66],density:2}
 ];
 
-// [패턴] 한 마디 = 8칸(8분음표). . 쉼 / L 왼쪽(빨강) / R 오른쪽(파랑) / B 양손 동시
-const PATTERNS_EASY=[
- 'L...L...','R...R...',   // 한쪽만
- 'L...R...','R...L...',   // 번갈아
- 'B...B...','B.......',   // 동시
- '..L...R.','.R...L..',   // 늦게 나오는 엇박
- 'L.......','....R...'    // 여유
+// Build the whole rhythm chart once. All arrivals stay on the song's eighth-note grid.
+// L/R runs, alternating answers and rests replace dense simultaneous pairs.
+const RHYTHM_PHRASES=[
+ {lanes:[0,1,0,1,0,1],gaps:[1,1,1,1,1,1],rest:.5},
+ {lanes:[1,0,1,0],gaps:[1,1,1,2],rest:1},
+ {lanes:[0,0,1,1],gaps:[1,1,1,1],rest:.5},
+ {lanes:[1,1,1,0,1],gaps:[1,1,1,1,1.5],rest:1},
+ {lanes:[0,0,0,1,0],gaps:[1,1,1,1,1],rest:.5},
+ {lanes:[1,0,1,0,1,0],gaps:[1,.5,1,.5,1,1],rest:1},
+ {lanes:[0,1,1,0,0,1],gaps:[1,1,1,1,1,1],rest:.5},
+ {lanes:[1,0,1],gaps:[1,2,1],rest:1.5}
 ];
-const PATTERNS_NORMAL=[
- ...PATTERNS_EASY,
- 'L.R.L.R.','R.L.R.L.',   // 빠르게 번갈아
- 'LR..LR..','L.L.R.R.',   // 연타 후 쉼
- 'B...L.R.','..B...B.',   // 동시 + 엇박
- '.L.R.L.R','LLLL....'    // 엇박 / 한쪽 연타
-];
-let chart=[]; // 마디 번호 -> 패턴 문자열
-function patternForBar(bar){
- if(chart[bar])return chart[bar];
- const pool=tracks[selected].level==='NORMAL'?PATTERNS_NORMAL:PATTERNS_EASY;
- let pick;
- do{pick=pool[Math.floor(Math.random()*pool.length)]}while(pool.length>1&&pick===chart[bar-1]);
- return chart[bar]=pick;
+let chart=[],chartIndex=0;
+function buildRhythmChart(epoch,finish,rng=Math.random){
+ const track=tracks[selected],beat=60/track.bpm,tick=beat/2,normal=track.level==='NORMAL';
+ const minArrival=normal?.25:.35,minSpawn=normal?.16:.20,events=[],lastLane=[null,null];
+ let cursor=epoch,deck=[],previousPhrase=-1,previousFlight=-1;
+ const snap=t=>epoch+Math.ceil((t-epoch)/tick-1e-7)*tick;
+ while(cursor<finish-.4){
+  if(!deck.length){deck=RHYTHM_PHRASES.map((_,i)=>i);for(let i=deck.length-1;i>0;i--){const j=Math.floor(rng()*(i+1));[deck[i],deck[j]]=[deck[j],deck[i]]}if(deck[deck.length-1]===previousPhrase)deck.reverse()}
+  const phraseId=deck.pop(),phrase=RHYTHM_PHRASES[phraseId];previousPhrase=phraseId;
+  const options=[.86,1,1.12].filter(v=>v!==previousFlight),factor=options[Math.floor(rng()*options.length)];previousFlight=factor;
+  const duration=Math.max(1.5,Math.round(travelDuration*factor/tick)*tick);
+  for(let i=0;i<phrase.lanes.length;i++){
+   const lane=phrase.lanes[i],last=lastLane[lane];
+   let target=snap(events.length?cursor+Math.max(minArrival,beat*phrase.gaps[i]):epoch+duration),accepted=false;
+   for(let attempts=0;attempts<400&&target<finish-.35;attempts++,target+=tick){
+    const spawn=target-duration;
+    if(spawn<epoch-1e-7)continue;
+    // Keep clear depth separation and prevent a faster note overtaking the same-hand note ahead.
+    const laneGap=normal?.36:.45;
+    if(last&&(spawn-last.spawnTime<laneGap-1e-7||target-last.targetTime<minArrival-1e-7))continue;
+    if(events.some(e=>Math.abs(spawn-e.spawnTime)<minSpawn-1e-7))continue;
+    // Allow a short burst, but cap the visible backlog so a lane cannot fill indefinitely.
+    if(events.filter(e=>e.type===lane&&e.spawnTime<=spawn&&e.targetTime+.35>spawn).length>=(normal?5:4))continue;
+    const event={type:lane,targetTime:target,spawnTime:spawn,duration,phrase:phraseId};events.push(event);lastLane[lane]=event;cursor=target;accepted=true;break;
+   }
+   if(!accepted){cursor=finish;break}
+  }
+  if(cursor<finish)cursor=snap(cursor+beat*(phrase.rest+(rng()<.18?.5:0)));
+ }
+ return events.sort((a,b)=>a.spawnTime-b.spawnTime);
 }
-function spawnFromChart(time,idx){
- const ch=patternForBar(Math.floor(idx/8))[idx%8];
- if(ch==='L'||ch==='B'){notes.push(makeNote(time,0));totalNotes++}
- if(ch==='R'||ch==='B'){notes.push(makeNote(time,1));totalNotes++}
+function spawnDueNotes(now){
+ while(chartIndex<chart.length&&chart[chartIndex].spawnTime<=now+.012){
+  const event=chart[chartIndex++];
+  if(event.targetTime<=now+.15)continue; // Do not dump overdue notes onto the player after a stall.
+  const note=makeNote(event.targetTime,event.type);note.duration=event.duration;
+  notes.push(note);totalNotes++;
+ }
 }
 
 let practicePhase='position',practiceCuts=0,practiceHold=0,practiceNextAt=0;
@@ -150,12 +173,19 @@ function dwell(now){
 async function unlockAudio(){audioCtx??=new(window.AudioContext||window.webkitAudioContext)();await audioCtx.resume()}
 function tone(freq,time,length,type,volume,destination=master){const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.type=type;o.frequency.setValueAtTime(freq,time);g.gain.setValueAtTime(.001,time);g.gain.exponentialRampToValueAtTime(volume,time+.008);g.gain.exponentialRampToValueAtTime(.001,time+length);o.connect(g);g.connect(destination);o.start(time);o.stop(time+length+.02);o.onended=()=>{o.disconnect();g.disconnect()};return o}
 function beat(step,time){const t=tracks[selected],quarter=step%2===0;if(quarter){const o=tone(140,time,.14,'sine',.5);o.frequency.exponentialRampToValueAtTime(32,time+.12);tone(t.bass[Math.floor(step/8)%4],time,.2,'triangle',.22)}if(step%4===2)tone(180,time,.1,'triangle',.13);if(!quarter)tone(6500,time,.025,'square',.025);if(step%2===0)tone(t.melody[Math.floor(step/2)%8],time,.18,'sine',.1)}
-// [패턴] 상자 생성을 spawnFromChart로 교체
-function schedule(){if(state!=='playing'||!audioCtx)return;const now=audioCtx.currentTime;if(now<countdownEnd){musicTimer=setTimeout(schedule,25);return}if(nextNoteTime<now-.1){const skip=Math.ceil((now-nextNoteTime)/(30/tracks[selected].bpm));beatStep+=skip;nextNoteTime+=skip*30/tracks[selected].bpm}while(nextSpawnTime<now+travelDuration+.12&&nextSpawnTime<endTime){if(nextSpawnTime>=now)spawnFromChart(nextSpawnTime,spawnStep);nextSpawnTime+=30/tracks[selected].bpm;spawnStep++}while(nextNoteTime<now+.12&&nextNoteTime<startTime+60){beat(beatStep,nextNoteTime);nextNoteTime+=30/tracks[selected].bpm;beatStep++}musicTimer=setTimeout(schedule,25)}
+function schedule(){
+ if(state!=='playing'||!audioCtx)return;
+ const now=audioCtx.currentTime;if(now<countdownEnd){musicTimer=setTimeout(schedule,25);return}
+ spawnDueNotes(now);
+ const tick=30/tracks[selected].bpm;
+ if(nextNoteTime<now-.1){const skip=Math.ceil((now-nextNoteTime)/tick);beatStep+=skip;nextNoteTime+=skip*tick}
+ while(nextNoteTime<now+.12&&nextNoteTime<startTime+60){beat(beatStep,nextNoteTime);nextNoteTime+=tick;beatStep++}
+ musicTimer=setTimeout(schedule,25);
+}
 function stopMusic(){clearTimeout(musicTimer);musicTimer=0;if(master&&audioCtx){const old=master;old.gain.cancelScheduledValues(audioCtx.currentTime);old.gain.setTargetAtTime(0,audioCtx.currentTime,.012);setTimeout(()=>old.disconnect(),300)}master=null}
 let launching=false;
-// [패턴] chart=[] 로 악보 초기화
-async function play(){if(launching||state==='playing')return;launching=true;try{await unlockAudio();stopMusic();master=audioCtx.createGain();master.gain.value=.65;master.connect(audioCtx.destination);score=combo=maxCombo=hits=totalNotes=0;notes=[];particles=[];beatStep=0;$('score-label').textContent='SCORE';$('combo-label').textContent='COMBO';$('score-value').textContent='0';$('combo-value').textContent='0';$('judgment').style.opacity=0;countdownEnd=audioCtx.currentTime+3;startTime=countdownEnd;endTime=startTime+60+travelDuration;nextNoteTime=startTime;nextSpawnTime=startTime+Math.ceil(travelDuration/(30/tracks[selected].bpm))*(30/tracks[selected].bpm);spawnStep=0;chart=[];lastSecond=-1;lastCountdown=-1;lastHint='';displayTracking=null;$('playing-title').textContent=tracks[selected].title;$('tracking-hint').textContent=inputMode==='mouse'?'마우스를 움직여 상자를 베어 주세요':'손을 카메라에 보여 주세요';showState('playing');schedule();ensureRender()}catch(e){$('camera-status').textContent='오디오를 시작하지 못했어요. 버튼을 다시 눌러 주세요.'}finally{launching=false}}
+// A new play gets a new, spacing-checked chart.
+async function play(){if(launching||state==='playing')return;launching=true;try{await unlockAudio();stopMusic();master=audioCtx.createGain();master.gain.value=.65;master.connect(audioCtx.destination);score=combo=maxCombo=hits=totalNotes=0;notes=[];particles=[];beatStep=0;$('score-label').textContent='SCORE';$('combo-label').textContent='COMBO';$('score-value').textContent='0';$('combo-value').textContent='0';$('judgment').style.opacity=0;countdownEnd=audioCtx.currentTime+3;startTime=countdownEnd;endTime=startTime+60;nextNoteTime=startTime;nextSpawnTime=startTime+Math.ceil(travelDuration/(30/tracks[selected].bpm))*(30/tracks[selected].bpm);spawnStep=0;chart=buildRhythmChart(startTime,endTime);chartIndex=0;lastSecond=-1;lastCountdown=-1;lastHint='';displayTracking=null;$('playing-title').textContent=tracks[selected].title;$('tracking-hint').textContent=inputMode==='mouse'?'마우스를 움직여 상자를 베어 주세요':'손을 카메라에 보여 주세요';showState('playing');schedule();ensureRender()}catch(e){$('camera-status').textContent='오디오를 시작하지 못했어요. 버튼을 다시 눌러 주세요.'}finally{launching=false}}
 $('play-btn').onclick=play;$('replay-btn').onclick=play;$('select-btn').onclick=menu;$('game-back').onclick=menu;
 
 function practiceSlot(id){const k=420/130;return {x:W/2+(id===0?-1:1)*Math.min(150,W*.105)*k,y:H*.48+25*k,r:Math.min(70,W*.07)}}
