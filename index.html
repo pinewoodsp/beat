@@ -93,14 +93,14 @@ document.querySelectorAll('[data-speed]').forEach(b=>b.onclick=()=>{travelDurati
 function resetDwell(){dwellTarget=null;dwellStart=0;$('hand-cursor').querySelector('.progress').style.strokeDashoffset='138.23'}
 function refreshRects(){selectionRects=[...document.querySelectorAll('[data-dwell]')].filter(b=>!b.disabled&&!b.closest('[hidden]')).map(el=>({el,rect:el.getBoundingClientRect()}))}
 $('select-screen').addEventListener('scroll',refreshRects,{passive:true});
-function showState(next){state=next;$('performance-hud').hidden=next==='start';resetPerformance();document.body.classList.toggle('in-play',next==='playing'||next==='practice');for(const id of ['start','select','result'])$(id+'-screen').hidden=next!==id;$('game-ui').hidden=!['playing','practice'].includes(next);$('practice-guide').hidden=next!=='practice';$('practice-controls').hidden=next!=='practice';hideMenuPointer();practiceDwellSaber=null;sabers.forEach(s=>{s.visual=null;s.motion=[];s.trail=[];s.pendingSample=null});resetDwell();dwellLocked=null;refreshRects()}
+function showState(next){state=next;$('performance-hud').hidden=next==='start';resetPerformance();document.body.classList.toggle('in-play',next==='playing'||next==='practice');for(const id of ['start','select','result'])$(id+'-screen').hidden=next!==id;$('game-ui').hidden=!['playing','practice'].includes(next);$('practice-guide').hidden=next!=='practice';$('practice-controls').hidden=next!=='practice';hideMenuPointer();practiceDwellSaber=null;sabers.forEach(s=>{s.visual=null;s.motion=[];s.trail=[];s.pendingSample=null;s.occluded=false;s.identityConfidence=0;s.identityPending=null;s.rawX=s.rawY=null;s.rawVX=s.rawVY=0});resetDwell();dwellLocked=null;refreshRects()}
 function menu(){stopMusic();ctx.clearRect(0,0,W,H);notes=[];particles=[];sabers.forEach(s=>s.trail=[]);$('countdown').hidden=true;showState('select');$('camera-status').textContent=inputMode==='mouse'?'마우스 모드 · 클릭으로 곡을 선택하세요':'손 인식 준비 완료 · 검지를 보여 주세요';ensureRender()}
 const video=$('webcam');let hands=null,stream=null,cameraEpoch=0,cameraStarting=false,inFlight=false,lastInference=0,lastVideoTime=-1,inferTimer=0,modelFailed=false;
 let pointerId=null,displayTracking=null,practiceDwellSaber=null,inferenceMs=15,trackerMode='lite';
 let libraryPromise=null;
 function loadHandLibrary(){if(window.Hands)return Promise.resolve();if(!libraryPromise)libraryPromise=new Promise((resolve,reject)=>{const el=document.createElement('script');el.src='https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js';el.onload=resolve;el.onerror=()=>{libraryPromise=null;el.remove();reject(new Error('손 인식 파일 다운로드 실패'))};document.head.appendChild(el)});return libraryPromise}
-async function loadLiteTracker(){await loadHandLibrary();const epoch=cameraEpoch;if(!stream)return;const model=new Hands({locateFile:f=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/${f}`});hands=model;model.setOptions({maxNumHands:2,modelComplexity:0,minDetectionConfidence:.5,minTrackingConfidence:.45});model.onResults(r=>{if(epoch===cameraEpoch&&!document.hidden)onHands(r)});await model.initialize();if(epoch!==cameraEpoch)return;await model.send({image:video})}
-function stopCamera(){cameraEpoch++;clearTimeout(inferTimer);inferTimer=0;if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;video.srcObject=null;handPoint=null;pointerId=null;pointerTrail=[];if(hands){const old=hands;hands=null;Promise.resolve(old.close()).catch(()=>{})}inFlight=false;lastVideoTime=-1;perf.camera={};perf.handCount=0;sabers.forEach(s=>{s.seen=0;s.trail=[];s.pendingSample=null})}
+async function loadLiteTracker(){await loadHandLibrary();const epoch=cameraEpoch;if(!stream)return;const model=new Hands({locateFile:f=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/${f}`});hands=model;model.setOptions({selfieMode:false,maxNumHands:2,modelComplexity:0,minDetectionConfidence:.5,minTrackingConfidence:.45});model.onResults(r=>{if(epoch===cameraEpoch&&!document.hidden)onHands(r)});await model.initialize();if(epoch!==cameraEpoch)return;await model.send({image:video})}
+function stopCamera(){cameraEpoch++;clearTimeout(inferTimer);inferTimer=0;if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;video.srcObject=null;handPoint=null;pointerId=null;pointerTrail=[];if(hands){const old=hands;hands=null;Promise.resolve(old.close()).catch(()=>{})}inFlight=false;lastVideoTime=-1;perf.camera={};perf.handCount=0;sabers.forEach(s=>{s.seen=0;s.trail=[];s.pendingSample=null;s.occluded=false;s.identityConfidence=0;s.identityPending=null;s.rawX=s.rawY=null;s.rawVX=s.rawVY=0})}
 async function inferenceLoop(){clearTimeout(inferTimer);if(!stream||!hands||document.hidden||modelFailed||inFlight)return;if(qualityChanging){inferTimer=setTimeout(inferenceLoop,30);return}const epoch=cameraEpoch,now=performance.now();const interval=Math.max(1000/performanceProfile().inferenceFPS,inferenceMs*1.5);
  if(video.readyState<2||video.currentTime===lastVideoTime||now-lastInference<interval){inferTimer=setTimeout(inferenceLoop,Math.max(8,interval-(now-lastInference)));return}
  inFlight=true;lastInference=now;lastVideoTime=video.currentTime;
@@ -136,26 +136,76 @@ function acceptTrackedPoint(s,x,y,lastAt,now){
  if(pending&&now-pending.t<=260&&now-pending.t>=25&&Math.hypot(x-pending.x,y-pending.y)<Math.min(W,H)*.1){s.pendingSample=null;s.relocated=true;return true}
  s.pendingSample={x,y,t:now};return false;
 }
-function onHands(results){if(!stream)return;perf.inferences++;perf.handCount=results.multiHandLandmarks?.length||0;const now=performance.now(),landmarks=results.multiHandLandmarks||[];
- const detected=landmarks.filter(lm=>lm.length>=21&&lm.every(p=>Number.isFinite(p.x)&&Number.isFinite(p.y))).map(lm=>({x:(1-(lm[0].x+lm[5].x+lm[9].x+lm[17].x)/4)*W,y:(lm[0].y+lm[5].y+lm[9].y+lm[17].y)/4*H,tipX:(1-lm[8].x)*W,tipY:lm[8].y*H})).filter(d=>d.x>=0&&d.x<=W&&d.y>=0&&d.y<=H);
- const assigned=new Map(),remaining=new Set(detected.map((_,i)=>i));const candidates=[];
- if(detected.length===2&&sabers.every(s=>now-s.seen<HAND_TIMEOUT)){const cost=(id,i)=>{const s=sabers[id];return Math.hypot(detected[i].x-s.x,detected[i].y-s.y)},direct=cost(0,0)+cost(1,1),cross=cost(0,1)+cost(1,0),order=direct<=cross?[0,1]:[1,0];if(order.every((i,id)=>cost(id,i)<W*.32)){order.forEach((i,id)=>assigned.set(id,i));remaining.clear()}}
- for(let id=0;id<2;id++)if(now-sabers[id].seen<HAND_TIMEOUT)for(let i=0;i<detected.length;i++)candidates.push({id,i,d:Math.hypot(detected[i].x-sabers[id].x,detected[i].y-sabers[id].y)});
- candidates.sort((a,b)=>a.d-b.d);for(const c of candidates)if(c.d<W*.32&&!assigned.has(c.id)&&remaining.has(c.i)){assigned.set(c.id,c.i);remaining.delete(c.i)}
- for(const i of remaining){const preferred=detected[i].x<W/2?0:1;const id=assigned.has(preferred)?1-preferred:preferred;if(!assigned.has(id))assigned.set(id,i)}
- for(const [id,i]of assigned){const d=detected[i],s=sabers[id];if(!acceptTrackedPoint(s,d.x,d.y,s.seen,now))continue;const elapsed=now-s.seen,valid=elapsed<180&&!s.relocated,oldVisual=elapsed<HAND_TIMEOUT?s.visual:null;const p=valid?smoothPoint(s,d.x,d.y,elapsed):d;s.prevX=valid?s.x:p.x;s.prevY=valid?s.y:p.y;s.x=p.x;s.y=p.y;s.sampleDt=valid?elapsed:0;s.seen=now;if(!valid)s.trail=[];recordMotion(s,now,valid);if(!valid&&oldVisual)s.visual=oldVisual;if((state==='playing'||state==='practice')&&valid)checkSlice(s,id,now)}
- if(!assigned.has(pointerId)&&(pointerId===null||now-sabers[pointerId].seen>=HAND_TIMEOUT))pointerId=assigned.has(1)?1:assigned.has(0)?0:null;
- if(state!=='select'&&state!=='result'){handPoint=null;pointerTrail=[];return}
- if(pointerId!==null&&assigned.has(pointerId)){const d=detected[assigned.get(pointerId)];if(handPoint&&!acceptTrackedPoint(handPoint,d.tipX,d.tipY,handPoint.t,now))return;const valid=handPoint&&now-handPoint.t<180&&!handPoint.relocated;const p=valid?smoothPoint(handPoint,d.tipX,d.tipY,now-handPoint.t):{x:d.tipX,y:d.tipY};handPoint={...p,t:now,prevX:valid?handPoint.x:p.x,prevY:valid?handPoint.y:p.y,sampleDt:valid?now-handPoint.t:0,visual:valid?handPoint.visual:null}}
- else if(handPoint&&now-handPoint.t>120){handPoint=null;pointerTrail=[]}
+// The video sent to legacy Hands is unmirrored (selfieMode:false).
+// Its handedness labels assume a mirrored input, so swap labels once here.
+function handIdentity(result){
+ const item=Array.isArray(result)?result[0]:result?.classification?.[0]||result;
+ const id=item?.label==='Right'?0:item?.label==='Left'?1:null;
+ return {id,confidence:Number.isFinite(item?.score)?item.score:0};
 }
+function collectHands(results){
+ return (results.multiHandLandmarks||[]).flatMap((lm,index)=>{
+  if(lm.length<21||!lm.every(p=>Number.isFinite(p.x)&&Number.isFinite(p.y)))return [];
+  const identity=handIdentity(results.multiHandedness?.[index]);
+  const x=(1-(lm[0].x+lm[5].x+lm[9].x+lm[17].x)/4)*W,y=(lm[0].y+lm[5].y+lm[9].y+lm[17].y)/4*H;
+  if(x<0||x>W||y<0||y>H)return [];
+  return [{x,y,tipX:(1-lm[8].x)*W,tipY:lm[8].y*H,...identity,lm,span:Math.hypot((lm[5].x-lm[17].x)*W,(lm[5].y-lm[17].y)*H)}];
+ });
+}
+function samePhysicalHand(a,b){
+ const limit=Math.max(12,Math.min(a.span,b.span)*.4);
+ if(Math.hypot(a.x-b.x,a.y-b.y)>limit)return false;
+ const rms=Math.sqrt(a.lm.reduce((sum,p,i)=>sum+((p.x-b.lm[i].x)*W)**2+((p.y-b.lm[i].y)*H)**2,0)/21);
+ return rms<limit;
+}
+function isSaberTracked(s,now){return !s.occluded&&s.seen>0&&now-s.seen<HAND_TIMEOUT}
+function assignHandIdentities(detected,now){
+ // Never synthesize the missing side from a second result with the same label.
+ const unique=[];for(const d of [...detected].sort((a,b)=>b.confidence-a.confidence)){
+  if(d.id===null||d.confidence<.75||unique.some(other=>samePhysicalHand(d,other)))continue;
+  unique.push(d);
+ }
+ const assigned=new Map();for(const d of unique){
+  const previous=assigned.get(d.id);if(!previous||d.confidence>previous.confidence)assigned.set(d.id,d);
+ }
+ if(assigned.size===2&&sabers.every(s=>isSaberTracked(s,now))){
+  const predict=s=>{const age=Math.min(100,Math.max(0,now-s.seen)),dx=(s.rawVX||0)*age,dy=(s.rawVY||0)*age,length=Math.hypot(dx,dy),factor=Math.min(1,Math.min(W,H)*.2/Math.max(1,length));return {x:(s.rawX??s.x)+dx*factor,y:(s.rawY??s.y)+dy*factor}};
+  const predicted=sabers.map(predict),distance=(id,d)=>Math.hypot(d.x-predicted[id].x,d.y-predicted[id].y),left=assigned.get(0),right=assigned.get(1),labelCost=distance(0,left)+distance(1,right),oppositeCost=distance(0,right)+distance(1,left);
+  if(labelCost>oppositeCost+Math.min(W,H)*.16){
+   // Confirm contradictory identities on successive frames, never swap on one label flicker.
+   let confirmed=true;for(const [id,d]of assigned){const s=sabers[id],pending=s.identityPending;const agrees=pending&&now-pending.t>=25&&now-pending.t<=260&&Math.hypot(d.x-pending.x,d.y-pending.y)<Math.min(W,H)*.14;confirmed&&=Boolean(agrees);s.identityPending={x:d.x,y:d.y,t:now}}
+   if(!confirmed)assigned.clear();else for(const [id,d]of assigned){d.identityReacquired=true;sabers[id].identityPending=null}
+  }else sabers.forEach(s=>s.identityPending=null);
+ }
+ if(assigned.size===1){
+  const [id,d]=assigned.entries().next().value,other=sabers[1-id],own=sabers[id];
+  // A flipped classification near the already visible other hand is ambiguous.
+  // Hold it rather than transferring ownership or spawning an overlapping saber.
+  if(isSaberTracked(other,now)&&Math.hypot(d.x-other.x,d.y-other.y)<Math.max(35,d.span*.8)&&(!isSaberTracked(own,now)||Math.hypot(d.x-own.x,d.y-own.y)>Math.hypot(d.x-other.x,d.y-other.y)+Math.min(W,H)*.08))assigned.clear();
+ }
+ return assigned;
+}
+function onHands(results){if(!stream)return;perf.inferences++;const now=performance.now(),detected=collectHands(results),assigned=assignHandIdentities(detected,now),accepted=new Map();
+ for(const [id,d]of assigned){const s=sabers[id];if(!acceptTrackedPoint(s,d.x,d.y,s.seen,now))continue;const elapsed=now-s.seen,valid=elapsed<180&&!s.relocated&&!s.occluded&&!d.identityReacquired,oldVisual=elapsed<HAND_TIMEOUT?s.visual:null;const p=valid?smoothPoint(s,d.x,d.y,elapsed):d;s.prevX=valid?s.x:p.x;s.prevY=valid?s.y:p.y;s.x=p.x;s.y=p.y;s.rawVX=valid&&elapsed>0?(d.x-(s.rawX??d.x))/elapsed:0;s.rawVY=valid&&elapsed>0?(d.y-(s.rawY??d.y))/elapsed:0;s.rawX=d.x;s.rawY=d.y;s.sampleDt=valid?elapsed:0;s.seen=now;s.occluded=false;s.identityConfidence=d.confidence;if(!valid)s.trail=[];recordMotion(s,now,valid);if(!valid&&oldVisual)s.visual=oldVisual;accepted.set(id,d);if((state==='playing'||state==='practice')&&valid)checkSlice(s,id,now)}
+ for(let id=0;id<2;id++)if(!accepted.has(id)){
+  const s=sabers[id];s.motion=[];if(!assigned.has(id))s.pendingSample=null;
+  // Hide an unresolved overlapping hand; retain its anatomical identity.
+  if([...accepted.values()].some(d=>Math.hypot(d.x-s.x,d.y-s.y)<Math.max(35,d.span*.8))){s.occluded=true;s.trail=[];s.visual=null}
+ }
+ perf.handCount=accepted.size;
+ if(!accepted.has(pointerId)&&(pointerId===null||!isSaberTracked(sabers[pointerId],now))){const previous=pointerId;pointerId=accepted.has(1)?1:accepted.has(0)?0:null;if(pointerId!==previous){handPoint=null;resetDwell();dwellLocked=null;pointerTrail=[]}}
+ if(state!=='select'&&state!=='result'){handPoint=null;pointerTrail=[];return}
+ if(pointerId!==null&&accepted.has(pointerId)){const d=accepted.get(pointerId);if(handPoint&&!acceptTrackedPoint(handPoint,d.tipX,d.tipY,handPoint.t,now))return;const valid=handPoint&&now-handPoint.t<180&&!handPoint.relocated;const p=valid?smoothPoint(handPoint,d.tipX,d.tipY,now-handPoint.t):{x:d.tipX,y:d.tipY};handPoint={...p,t:now,prevX:valid?handPoint.x:p.x,prevY:valid?handPoint.y:p.y,sampleDt:valid?now-handPoint.t:0,visual:valid?handPoint.visual:null}}
+ else if(handPoint&&now-handPoint.t>HAND_TIMEOUT){handPoint=null;pointerTrail=[]}
+}
+
 function dwell(now){
  const menuView=state==='select'||state==='result';practiceDwellSaber=null;
  if(!menuView)hideMenuPointer();
  if(!menuView&&state!=='practice'){resetDwell();dwellLocked=null;return}
  let point=handPoint;
  if(state==='practice'){
-  const id=[1,0].find(i=>now-sabers[i].seen<HAND_TIMEOUT);
+  const id=[1,0].find(i=>isSaberTracked(sabers[i],now));
   if(id!==undefined){practiceDwellSaber=id;point={...displayPoint(sabers[id],now,true),t:sabers[id].seen}}else point=null;
  }
  if(inputMode!=='camera'||!point||now-point.t>HAND_TIMEOUT){hideMenuPointer();resetDwell();dwellLocked=null;return}
@@ -198,11 +248,11 @@ async function beginPractice(){if(launching)return;launching=true;try{await unlo
 let positionVisited=[false,false];
 function practiceSuccess(now){$('score-value').textContent=practiceCuts;$('judgment').textContent='좋아요!';$('judgment').style.color='#57d9f4';$('judgment').style.opacity=1;judgmentUntil=now+350;if(practiceCuts>=8){practicePhase='free';$('practice-stage').textContent='03 / READY TO PLAY';$('practice-instruction').textContent='준비됐어요! 더 연습해도 좋아요.';$('practice-detail').textContent='아래 ‘준비 완료’를 누르면 3·2·1 후 선택한 곡이 시작돼요.'}else{$('practice-detail').textContent=`성공 ${practiceCuts}/8 · 시간 제한 없이 다음 화살표 방향으로 베어 주세요.`}}
 function nextPracticeBox(){const index=practicePhase==='free'?Math.floor(Math.random()*8):practiceCuts,id=Math.floor(index/4)%2,n=makeNote(audioCtx.currentTime,id);n.direction=dirs[index%4];n.practice=true;n.spawnedAt=performance.now();sabers.forEach(s=>s.motion=[]);notes=[n];if(practicePhase!=='free'){$('practice-stage').textContent='02 / FOLLOW THE ARROW';$('practice-instruction').textContent=`${id===0?'왼쪽 빨간':'오른쪽 파란'} 상자를 ${['위','아래','왼쪽','오른쪽'][index%4]}로 베어 보세요`;$('practice-detail').textContent=`성공 ${practiceCuts}/8 · 상자를 가로질러 화살표 방향으로 짧게 휘둘러 주세요.`}}
-function renderPractice(now,dt){ctx.drawImage(tunnel,0,0,W,H);drawJudgmentLine();let both=true;for(let id=0;id<2;id++){const p=practiceSlot(id),s=sabers[id],inside=now-s.seen<HAND_TIMEOUT&&Math.hypot(s.x-p.x,s.y-p.y)<p.r;both&&=inside;if(inside)positionVisited[id]=true;if(practicePhase==='position'){ctx.strokeStyle=s.color;ctx.fillStyle=inside?'#57d9f425':'#0b132070';ctx.lineWidth=inside?4:2;ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.fillStyle=s.color;ctx.font='700 13px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText((inside||inputMode==='mouse'&&positionVisited[id]?'✓ ':'')+(id===0?'LEFT':'RIGHT'),p.x,p.y+p.r+27)}}
+function renderPractice(now,dt){ctx.drawImage(tunnel,0,0,W,H);drawJudgmentLine();let both=true;for(let id=0;id<2;id++){const p=practiceSlot(id),s=sabers[id],inside=isSaberTracked(s,now)&&Math.hypot(s.x-p.x,s.y-p.y)<p.r;both&&=inside;if(inside)positionVisited[id]=true;if(practicePhase==='position'){ctx.strokeStyle=s.color;ctx.fillStyle=inside?'#57d9f425':'#0b132070';ctx.lineWidth=inside?4:2;ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.fillStyle=s.color;ctx.font='700 13px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText((inside||inputMode==='mouse'&&positionVisited[id]?'✓ ':'')+(id===0?'LEFT':'RIGHT'),p.x,p.y+p.r+27)}}
  if(practicePhase==='position'){const ready=inputMode==='mouse'?positionVisited.every(Boolean):both;practiceHold=ready?practiceHold+dt:0;if(practiceHold>.65){practicePhase='slice';practiceNextAt=now;nextPracticeBox()}}
  else{if(!notes.some(n=>!n.isHit)&&now>=practiceNextAt)nextPracticeBox();for(const n of notes){n.targetTime=audioCtx.currentTime;project(n,audioCtx.currentTime);drawNote(n)}}
  for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.life-=dt;if(p.life<=0){particles.splice(i,1);continue}p.x+=p.vx*dt;p.y+=p.vy*dt;ctx.globalAlpha=p.life/.4;ctx.fillStyle=p.color;ctx.fillRect(p.x,p.y,4,4)}ctx.globalAlpha=1;sabers.forEach(s=>drawSaber(s,now));if(now>judgmentUntil)$('judgment').style.opacity=0;
- const hint=inputMode==='mouse'?'마우스로 연습 중 · 점수에 반영되지 않아요':sabers.some(s=>now-s.seen<HAND_TIMEOUT)?'손 인식 중 · 점수에 반영되지 않아요':'손을 카메라에 보여 주세요';if(hint!==lastHint){lastHint=hint;$('tracking-hint').textContent=hint}dwell(now);
+ const hint=inputMode==='mouse'?'마우스로 연습 중 · 점수에 반영되지 않아요':sabers.some(s=>isSaberTracked(s,now))?'손 인식 중 · 점수에 반영되지 않아요':'손을 카메라에 보여 주세요';if(hint!==lastHint){lastHint=hint;$('tracking-hint').textContent=hint}dwell(now);
 }
 $('practice-btn').onclick=beginPractice;$('practice-reset').onclick=beginPractice;$('practice-start').onclick=play;
 
@@ -242,12 +292,12 @@ function checkSlice(s,id,now){
  }
 }
 function judgment(text,now){if(text==='MISS')combo=0;$('score-value').textContent=score.toLocaleString();$('combo-value').textContent=combo;$('judgment').textContent=text;$('judgment').style.color=text==='MISS'?'#818aa0':'#57d9f4';$('judgment').style.opacity=1;judgmentUntil=now+300}
-function resize(){W=innerWidth;H=innerHeight;const budget=performanceProfile();const cap=Math.min(1,budget.canvasWidth/W,budget.canvasHeight/H);scale=cap;canvas.width=Math.round(W*cap);canvas.height=Math.round(H*cap);ctx.setTransform(cap,0,0,cap,0,0);tunnel=document.createElement('canvas');tunnel.width=canvas.width;tunnel.height=canvas.height;const c=tunnel.getContext('2d');c.scale(cap,cap);const cx=W/2,cy=H*.36,outerX=W*.43,outerY=H*.43;c.strokeStyle='#57d9f420';c.lineWidth=1;for(let i=0;i<5;i++){const k=.14+i*.215;c.strokeRect(cx-outerX*k,cy-outerY*k,2*outerX*k,2*outerY*k)}c.beginPath();for(const sx of[-1,1])for(const sy of[-1,1]){c.moveTo(cx+sx*outerX*.14,cy+sy*outerY*.14);c.lineTo(cx+sx*outerX,cy+sy*outerY)}c.stroke();sabers.forEach(s=>{s.seen=0;s.trail=[];s.pendingSample=null});refreshRects()}
+function resize(){W=innerWidth;H=innerHeight;const budget=performanceProfile();const cap=Math.min(1,budget.canvasWidth/W,budget.canvasHeight/H);scale=cap;canvas.width=Math.round(W*cap);canvas.height=Math.round(H*cap);ctx.setTransform(cap,0,0,cap,0,0);tunnel=document.createElement('canvas');tunnel.width=canvas.width;tunnel.height=canvas.height;const c=tunnel.getContext('2d');c.scale(cap,cap);const cx=W/2,cy=H*.36,outerX=W*.43,outerY=H*.43;c.strokeStyle='#57d9f420';c.lineWidth=1;for(let i=0;i<5;i++){const k=.14+i*.215;c.strokeRect(cx-outerX*k,cy-outerY*k,2*outerX*k,2*outerY*k)}c.beginPath();for(const sx of[-1,1])for(const sy of[-1,1]){c.moveTo(cx+sx*outerX*.14,cy+sy*outerY*.14);c.lineTo(cx+sx*outerX,cy+sy*outerY)}c.stroke();sabers.forEach(s=>{s.seen=0;s.trail=[];s.pendingSample=null;s.occluded=false;s.identityConfidence=0;s.identityPending=null;s.rawX=s.rawY=null;s.rawVX=s.rawVY=0});refreshRects()}
 window.addEventListener('resize',resize);window.addEventListener('scroll',refreshRects,{passive:true});resize();selectTrack(0);
 function drawNote(n){if(n.z<45||n.isHit||n.isMissed)return;const half=n.screenSize/2;const ready=audioCtx&&inHitWindow(n,audioCtx.currentTime);ctx.fillStyle=ready?n.color+'55':'#101a2bea';ctx.strokeStyle=ready?'#ffffff':n.color;ctx.lineWidth=Math.max(ready?4:2,n.screenSize*(ready?.055:.035));ctx.beginPath();ctx.roundRect(n.screenX-half,n.screenY-half,n.screenSize,n.screenSize,Math.min(14,n.screenSize*.08));ctx.fill();ctx.stroke();ctx.fillStyle='white';ctx.font=`900 ${n.screenSize*.47}px sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(n.direction.symbol,n.screenX,n.screenY)}
 function appendTrail(trail,x,y,now){const last=trail[trail.length-1];if(last&&Math.hypot(last.x-x,last.y-y)<1.5){last.t=now;return}trail.push({x,y,t:now});while(trail.length>14||trail.length&&now-trail[0].t>TRAIL_LIFETIME)trail.shift()}
 function drawPointerTrail(now){while(pointerTrail.length&&now-pointerTrail[0].t>TRAIL_LIFETIME)pointerTrail.shift();const el=$('cursor-trail');el.hidden=pointerTrail.length<2;if(!el.hidden){const points=pointerTrail.map(p=>`${p.x},${p.y}`).join(' ');$('cursor-trail-glow').setAttribute('points',points);$('cursor-trail-core').setAttribute('points',points)}}
-function drawSaber(s,now){if(now-s.seen<=HAND_TIMEOUT){const shown=displayPoint(s,now,inputMode==='camera');appendTrail(s.trail,shown.x,shown.y,now)}while(s.trail.length&&now-s.trail[0].t>TRAIL_LIFETIME)s.trail.shift();if(now-s.seen>HAND_TIMEOUT){s.trail=[];return}ctx.save();ctx.lineCap='round';ctx.lineJoin='round';
+function drawSaber(s,now){if(isSaberTracked(s,now)){const shown=displayPoint(s,now,inputMode==='camera');appendTrail(s.trail,shown.x,shown.y,now)}while(s.trail.length&&now-s.trail[0].t>TRAIL_LIFETIME)s.trail.shift();if(!isSaberTracked(s,now)){s.trail=[];return}ctx.save();ctx.lineCap='round';ctx.lineJoin='round';
  if(s.trail.length>1){ctx.beginPath();ctx.moveTo(s.trail[0].x,s.trail[0].y);for(let i=1;i<s.trail.length;i++)ctx.lineTo(s.trail[i].x,s.trail[i].y);ctx.strokeStyle=s.color;ctx.globalAlpha=.16;ctx.lineWidth=24;ctx.stroke();ctx.globalAlpha=.75;ctx.lineWidth=9;ctx.stroke();ctx.strokeStyle='#fff';ctx.globalAlpha=.9;ctx.lineWidth=3;ctx.stroke()}
  const shown=s.visual||s;ctx.globalAlpha=1;ctx.fillStyle=s.color;ctx.beginPath();ctx.arc(shown.x,shown.y,13,0,Math.PI*2);ctx.fill();ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(shown.x,shown.y,6,0,Math.PI*2);ctx.fill();if(state==='practice'&&dwellTarget&&practiceDwellSaber!==null&&sabers[practiceDwellSaber]===s){const p=Math.min(1,(now-dwellStart)/DWELL_MS);ctx.strokeStyle='#fff';ctx.lineWidth=3;ctx.beginPath();ctx.arc(shown.x,shown.y,23,-Math.PI/2,-Math.PI/2+p*Math.PI*2);ctx.stroke()}ctx.restore()}
 let lastSecond=-1,lastCountdown=-1,lastHint='';
@@ -255,10 +305,10 @@ function render(now){raf=0;if(document.hidden||state==='start')return;if(now-las
  ctx.drawImage(tunnel,0,0,W,H);drawJudgmentLine();const time=audioCtx.currentTime;const countdown=countdownEnd-time;$('countdown').hidden=countdown<=0;const count=Math.ceil(countdown);if(countdown>0&&count!==lastCountdown){lastCountdown=count;$('countdown').innerHTML=count+'<small>READY TO SLICE</small>'}
  for(let i=notes.length-1;i>=0;i--){const n=notes[i];project(n,time);if(!n.isHit&&!n.isMissed&&time>n.targetTime+.28){n.isMissed=true;judgment('MISS',now)}drawNote(n);if(n.isHit||n.isMissed||n.z<45)notes.splice(i,1)}
  for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.life-=dt;if(p.life<=0){particles.splice(i,1);continue}p.x+=p.vx*dt;p.y+=p.vy*dt;ctx.globalAlpha=p.life/.4;ctx.fillStyle=p.color;ctx.fillRect(p.x,p.y,4,4)}ctx.globalAlpha=1;sabers.forEach(s=>drawSaber(s,now));if(now>judgmentUntil)$('judgment').style.opacity=0;
- const remain=Math.max(0,Math.ceil(endTime-time));if(remain!==lastSecond){lastSecond=remain;$('remaining-time').textContent=time<startTime?'곧 시작합니다':time>=startTime+PLAY_SECONDS?'FADE OUT · '+remain+'초':`${String(Math.floor(remain/60)).padStart(2,'0')}:${String(remain%60).padStart(2,'0')}`}$('song-progress').style.transform='scaleX('+Math.max(0,Math.min(1,(time-startTime)/PLAY_SECONDS))+')';if(inputMode==='camera'){const tracked=sabers.some(s=>now-s.seen<HAND_TIMEOUT),hint=tracked?'상자 중심이 파란 선에 닿으면 화살표 방향으로 베기':'손을 카메라에 보여 주세요';if(hint!==lastHint){lastHint=hint;$('tracking-hint').textContent=hint}}if(time>=endTime)finish();
+ const remain=Math.max(0,Math.ceil(endTime-time));if(remain!==lastSecond){lastSecond=remain;$('remaining-time').textContent=time<startTime?'곧 시작합니다':time>=startTime+PLAY_SECONDS?'FADE OUT · '+remain+'초':`${String(Math.floor(remain/60)).padStart(2,'0')}:${String(remain%60).padStart(2,'0')}`}$('song-progress').style.transform='scaleX('+Math.max(0,Math.min(1,(time-startTime)/PLAY_SECONDS))+')';if(inputMode==='camera'){const tracked=sabers.some(s=>isSaberTracked(s,now)),hint=tracked?'상자 중심이 파란 선에 닿으면 화살표 방향으로 베기':'손을 카메라에 보여 주세요';if(hint!==lastHint){lastHint=hint;$('tracking-hint').textContent=hint}}if(time>=endTime)finish();
  }raf=requestAnimationFrame(render)}
 function ensureRender(){if(!raf&&!document.hidden&&state!=='start'){lastRender=performance.now();raf=requestAnimationFrame(render)}}
-window.addEventListener('pointermove',e=>{if(!['playing','practice'].includes(state)||inputMode!=='mouse')return;const now=performance.now(),id=e.clientX<W/2?0:1,s=sabers[id],valid=now-s.seen<HAND_TIMEOUT;s.prevX=valid?s.x:e.clientX;s.prevY=valid?s.y:e.clientY;const elapsed=now-s.seen;s.x=e.clientX;s.y=e.clientY;s.sampleDt=valid?elapsed:0;s.seen=now;if(!valid)s.trail=[];recordMotion(s,now,valid);if(valid)checkSlice(s,id,now)},{passive:true});
+window.addEventListener('pointermove',e=>{if(!['playing','practice'].includes(state)||inputMode!=='mouse')return;const now=performance.now(),id=e.clientX<W/2?0:1,s=sabers[id],valid=isSaberTracked(s,now);s.prevX=valid?s.x:e.clientX;s.prevY=valid?s.y:e.clientY;const elapsed=now-s.seen;s.x=e.clientX;s.y=e.clientY;s.sampleDt=valid?elapsed:0;s.seen=now;if(!valid)s.trail=[];recordMotion(s,now,valid);if(valid)checkSlice(s,id,now)},{passive:true});
 window.addEventListener('pagehide',()=>{stopMusic();stopCamera()});
 if(matchMedia('(prefers-reduced-motion:reduce)').matches)document.body.classList.add('no-motion');
 </script>
